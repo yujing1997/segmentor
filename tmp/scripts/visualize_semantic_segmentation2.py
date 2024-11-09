@@ -473,6 +473,29 @@ class NpyImagePlotter:
             print(f"An error occurred: {e}")
 
 
+
+    # def extract_patch(self):
+    #     """Extract a patch from the WSI based on the provided coordinates and size."""
+    #     # Ensure data is loaded
+    #     if self.data is None:
+    #         self.load_data()
+
+    #     # Extract the patch
+    #     x_start, y_start = self.x_start, self.y_start
+    #     patch_size = self.patch_size
+
+    #     print(f"Extracting patch with coordinates: (x_start={x_start}, y_start={y_start}), size={patch_size}")
+
+    #     patch = self.data[y_start:y_start + patch_size, x_start:x_start + patch_size]
+
+    #     print(f"Extracted patch shape: {patch.shape}")
+
+    #     if patch.size == 0:
+    #         raise ValueError("Patch extraction failed or returned empty patch.")
+
+    #     return patch
+
+
     def extract_patch(self):
         """Extract a patch from the loaded data based on x_start, y_start, and patch_size."""
         if self.data is None:
@@ -509,37 +532,31 @@ class NpyImagePlotter:
 
         return slices
 
-    # def generate_segmentation_mask(self):
-    #     """Generate segmentation mask by selecting the class with the highest probability for each pixel."""
-    #     if self.data is None:
-    #         self.load_data()
+    def extract_slices(self):
+        """Extract 2D slices of specified size from the loaded data for each channel."""
+        if self.data is None:
+            print("Data not loaded. Call load_data() first.")
+            return None
 
-    #     # If full_image is True, generate mask for the entire image
-    #     if self.full_image:
-    #         print("Generating segmentation mask for the entire image.")
-    #         self.segmentation_mask = np.argmax(self.data, axis=-1)
+        # Dictionary to store slices for each channel
+        slices = {}
+        for channel in self.channels:
+            slices[channel] = self.data[self.x_start:self.x_start + self.patch_size, 
+                                        self.y_start:self.y_start + self.patch_size, 
+                                        channel]
+            print(f"Extracted slice for channel {channel} with shape: {slices[channel].shape}")
 
-    #         # Transpose the segmentation mask if specified
-    #         if self.transpose_segmask:
-    #             self.segmentation_mask = self.segmentation_mask.T
-    #             print("Segmentation mask transposed for entire image.")
-        
-    #     # If full_image is False, generate mask for a specific patch
-    #     else:
-    #         patch = self.extract_patch()
-    #         self.segmentation_mask = np.argmax(patch, axis=-1)
+        return slices
 
-    #     # Transpose the segmentation mask for the patch if specified
-    #     if self.transpose_segmask:
-    #         self.segmentation_mask = self.segmentation_mask.T
-    #         print("Segmentation mask transposed for patch.")
-
-    #     print("Segmentation mask shape:", self.segmentation_mask.shape)
-    #     return self.segmentation_mask
+    # this below works!
     def generate_segmentation_mask(self):
+
         """Generate the segmentation mask by selecting the class with the highest probability for each pixel."""
         if self.data is None:
             self.load_data()
+        # check if data is loade properly
+        if self.data is None:
+            raise ValueError("Data not loaded. Call load_data() first.")
 
         # Generate mask for the entire image or a specific patch
         if self.full_image:
@@ -547,6 +564,7 @@ class NpyImagePlotter:
         else:
             patch = self.extract_patch()
             self.segmentation_mask = np.argmax(patch, axis=-1)
+            print(f"PATCH: Segmentation mask shape: {self.segmentation_mask.shape}")
 
         # Rotate the mask by 90 degrees counterclockwise if transpose_segmask is set
         if self.transpose_segmask:
@@ -555,7 +573,6 @@ class NpyImagePlotter:
 
         print("Segmentation mask shape:", self.segmentation_mask.shape)
         return self.segmentation_mask
-
 
 
     def plot_segmentation_mask(self, save_path=None):
@@ -636,7 +653,8 @@ class NpyImagePlotter:
 
         # Generate the overlay
         print("Creating segmentation overlay.")
-        overlay = self.create_overlay(wsi_patch, self.segmentation_mask, label_color_dict)
+        # overlay = self.create_overlay(wsi_patch, self.segmentation_mask, label_color_dict)
+        overlay = self.create_overlay_one_overlay(wsi_patch, self.segmentation_mask, label_color_dict)
 
         # Display based on the show_side_by_side flag
         if show_side_by_side:
@@ -679,9 +697,15 @@ class NpyImagePlotter:
             plt.savefig(save_path, bbox_inches="tight",dpi=600)
             print(f"Image saved to {save_path}")
         
+        plt.axis("off")
+        plt.axis("tight")
+
         plt.show()
 
-    def create_overlay(self, wsi_patch, mask, label_color_dict, alpha=0.5):
+        return overlay
+
+    # Two things to overlay 
+    def create_overlay_one_overlay(self, wsi_patch, mask, label_color_dict, alpha=0.5):
         """
         Create an overlay of the segmentation mask on the WSI patch.
 
@@ -699,6 +723,11 @@ class NpyImagePlotter:
         for label, (class_name, color) in label_color_dict.items():
             # Create a mask for the current class
             class_mask = (mask == label)
+            print(f"Type of class_mask: {type(class_mask)}")
+            if isinstance(class_mask, np.ndarray):
+                print(f"Shape of class_mask: {class_mask.shape}")
+            else:
+                print("class_mask is not an ndarray, it is a boolean.")
 
             # Overlay the color with specified transparency
             for c in range(3):  # Assuming RGB channels
@@ -708,6 +737,123 @@ class NpyImagePlotter:
 
         return overlay
     
+    # More than two things to overlay 
+    def create_overlay_two_overlay(self, wsi_patch, mask1, mask2=None, label_color_dict=None, masks=None, alpha=0.5):
+        """
+        Create an overlay of multiple segmentation masks on the WSI patch.
+
+        Args:
+            wsi_patch (np.ndarray): The WSI patch as a background image (shape: (H, W, 3)).
+            mask1 (np.ndarray): The first segmentation mask (shape: (H, W)).
+            mask2 (np.ndarray, optional): The second segmentation mask (shape: (H, W)). Default is None.
+            label_color_dict (dict, optional): Dictionary with label-color mappings. Default is None.
+            masks (list of np.ndarray, optional): List of additional segmentation masks. Default is None.
+            alpha (float): Transparency level for the overlay.
+
+        Returns:
+            np.ndarray: The overlay image.
+        """
+        # Start with a copy of the base WSI patch to create the overlay
+        overlay = np.copy(wsi_patch).astype(float) / 255  # Normalize to [0,1] for blending
+
+        # Initialize a list of masks to process
+        combined_masks = [mask1]
+        if mask2 is not None:
+            combined_masks.append(mask2)
+        if masks is not None:
+            combined_masks.extend(masks)
+
+        # Define default colors if no label_color_dict is provided
+        if label_color_dict is None:
+            label_color_dict = {
+                1: ('Class 1', (1, 0, 0)),  # Red color for class 1
+                2: ('Class 2', (0, 1, 0)),  # Green color for class 2
+                3: ('Class 3', (0, 0, 1))   # Blue color for class 3
+            }
+
+        for mask in combined_masks:
+            for label, (class_name, color) in label_color_dict.items():
+                # Create a mask for the current class
+                class_mask = (mask == label)
+                # print(f"shape of class_mask:{class_mask.shape}")
+                # print(f"dimension of class_mask:{len(class_mask.shape)}")
+                print(f"Type of class_mask: {type(class_mask)}")
+                if isinstance(class_mask, np.ndarray):
+                    print(f"Shape of class_mask: {class_mask.shape}")
+                else:
+                    print("class_mask is not an ndarray, it is a boolean.")
+
+                # Make sure mask has three channels (broadcasting if necessary)
+                # if class_mask.ndim == 2:
+                if len(class_mask.shape) == 2:
+                    class_mask = np.stack([class_mask] * 3, axis=-1)
+                    # print(f"class_mask is: {class_mask}" )
+
+                # Apply color with alpha blending
+                for c in range(3):  # RGB channels
+                    overlay[..., c] = np.where(
+                        class_mask[..., c],
+                        overlay[..., c] * (1 - alpha) + color[c] * alpha,
+                        overlay[..., c]
+                    )
+
+        # Convert back to uint8
+        return (overlay * 255).astype(np.uint8)
+
+    # Handling options to have two or more overlays (did not work!)
+    # def create_overlay(self, wsi_patch, mask1, mask2=None, label_color_dict=None, masks=None, alpha=0.5):
+    #     """
+    #     Create an overlay of multiple segmentation masks on the WSI patch.
+
+    #     Args:
+    #         wsi_patch (np.ndarray): The WSI patch as a background image (shape: (H, W, 3)).
+    #         mask1 (np.ndarray): The first segmentation mask (shape: (H, W)).
+    #         mask2 (np.ndarray, optional): The second segmentation mask (shape: (H, W)). Default is None.
+    #         label_color_dict (dict, optional): Dictionary with label-color mappings. Default is None.
+    #         masks (list of np.ndarray, optional): List of additional segmentation masks. Default is None.
+    #         alpha (float): Transparency level for the overlay.
+
+    #     Returns:
+    #         np.ndarray: The overlay image.
+    #     """
+    #     # Start with a copy of the base WSI patch to create the overlay
+    #     overlay = np.copy(wsi_patch)
+
+    #     # Initialize the list of masks to process
+    #     combined_masks = [mask1]
+    #     if mask2 is not None:
+    #         combined_masks.append(mask2)
+    #     if masks is not None:
+    #         combined_masks.extend(masks)
+
+    #     # Define default colors if no label_color_dict is provided
+    #     if label_color_dict is None:
+    #         label_color_dict = {
+    #             1: ('Class 1', (255, 0, 0)),  # Red color for class 1
+    #             2: ('Class 2', (0, 255, 0)),  # Green color for class 2
+    #             3: ('Class 3', (0, 0, 255))   # Blue color for class 3
+    #         }
+
+    #     # Loop through each mask and apply the color overlay
+    #     for mask in combined_masks:
+    #         for label, (class_name, color) in label_color_dict.items():
+    #             # Create a binary mask for the current class
+    #             class_mask = (mask == label)
+
+    #             # Ensure class_mask is an array, then stack it to match RGB channels if it's 2D
+    #             if isinstance(class_mask, np.ndarray) and class_mask.ndim == 2:
+    #                 class_mask = np.stack([class_mask] * 3, axis=-1)
+
+    #                 # Apply color with alpha blending
+    #                 for c in range(3):  # RGB channels
+    #                     overlay[..., c] = np.where(
+    #                         class_mask[..., c],
+    #                         overlay[..., c] * (1 - alpha) + color[c] * alpha,
+    #                         overlay[..., c]
+    #                     )
+
+    #     # Convert overlay back to uint8 for image display
+    #     return overlay.astype(np.uint8)
 
     def plot_slices(self, slices, label_dict=None, save_path=None):
         """
@@ -1012,7 +1158,340 @@ if __name__ == "__main__":
 
 
 
-# USE EXAMPLES
+#============================================================================================================
+
+# USE CASES 
+# 0. Note the size of a WSI segmentation map .npy output at 0.5 mpp resolution has a size of 3.5 Gb. For TCGA-CESC ~250 slides, that would take up 1TB space for just the segmentation maps.
+# 1. Viewsing basic WSI info
+    # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs --output_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results/0.raw.0.npy --resolution 0.2277 --task load_wsi
+        # WSI Dimensions at 0.2277 mpp : [135168 105472]
+# 1.2 Viewing mpp of a WSI
+    # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs --output_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results/0.raw.0.npy --task read_mpp_wsi
+        # Micrometers per pixel at 40x resolution: {'mpp': array([40, 40]), 'power': 0.2277, 'baseline': 0.0056925000000000005}
+
+# 2. Loading and Inspecting the Semantic Segmentation Output
+    # segmenation prob mask generated with mpp 0.5
+    # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs --output_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results/0.raw.0.npy --task load_output
+        # Loaded segmentation output:
+        # Shape: (12008, 15389, 5)
+        # Data type: float32
+        # Min value: 0.0
+        # Max value: 0.999853
+    # segmenation prob mask generated with mpp 0.2277
+        # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs --output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy --task load_output --expected_shape 135168,105472,5 --chunk_size 4000
+          # the expected shape should be the same as the shape of the WSI Dimensions at 40x resolution with 5 channels
+
+            # Memory insufficient; falling back to memory-mapped loading.
+            # Warning: Expected shape (135168, 105472, 5) but found (105472, 135168, 5). Please verify.
+            # Using memory-mapped array with shape: (105472, 135168, 5)
+            # Warning: Unexpected high max value; values should be within [0, 1].
+            # Data type: float32
+            # Min value: 0.0
+            # Max value: 1
+            # Output Shape: (105472, 135168, 5)
+            # Data Type: float32
+            # Min Value: 0.0
+            # Max Value: 1
+            
+# how to obtain the exact mpp at 40x resolution for a given WSI with TiaToolbox
+
+# 3. Visualizing a Specific Channel
+    # python script_name.py --wsi_path /path/to/wsi.svs --output_path /path/to/output.npy --task visualize_channel --channel_index 0
+        # --channel_index 0: Tumour, 1: Stroma, 2: Inflammatory, 3: Necrosis, 4: Others
+# 3.1 visualize_channel_x_y_patch (due to large size of the output, this function is not recommended)
+    # python visualize_semantic_segmentation.py --wsi_path /path/to/wsi.svs --output_path /path/to/output.npy --task visualize_channel_x_y_patch --channel_index 2 --start_x 500 --start_y 500 --patch_size 256
+        # --channel_index 0: Tumour, 1: Stroma, 2: Inflammatory, 3: Necrosis, 4: Others
+        # --start_x: Starting x-coordinate of the patch (ex.16001)
+        # --start_y: Starting y-coordinate of the patch (ex. 48001)
+        # --patch_size: Size of the patch to visualize (ex. 4000)
+
+    # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy --task visualize_channel_x_y_patch --channel_index 0 --start_x 16001 --start_y 48001 --patch_size 4000
+#3.2 visualize segmentation outpus as a 2D slice of a certain channel 
+
+    # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+        # --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+        # --output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+        # --task npy_plot \
+        # --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+        # --channels 0 1 2 3 4 \
+        # --x_start 16001 \
+        # --y_start 48001 \
+        # --patch_size 4000 \ 
+        # --save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/slice_image_16001_48001_4000_5classes.png
+
+    # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+    #     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+    #     --output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+    #     --task npy_plot \
+    #     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+    #     --channels 0 1 2 3 4 \
+    #     --x_start 44001 \
+    #     --y_start 108001 \
+    #     --patch_size 4000 \
+    #     --save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/slice_image_108001_44001_4000_5classes.png \
+    #     --transpose_segmask
+
+
+# 4. Saving Each Channel as an Image 
+    # python script_name.py --wsi_path /path/to/wsi.svs --output_path /path/to/output.npy --task save_channel_images --save_dir /path/to/save
+# 4.1 Saving Each Channel as an Image for a specific patch with x_y_patch 
+    # Did not work yet 
+    # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy --task save_channel_images_x_y_patch --save_dir /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations --channel_index 0 --start_x 16001 --start_y 48001 --patch_size 4000
+
+
+# 5. Plotting Class Distribution Histogram
+    # python script_name.py --wsi_path /path/to/wsi.svs --output_path /path/to/output.npy --task plot_class_histogram
+    # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs --output_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results/0.raw.0.npy --task plot_class_histogram --save_class_hist /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/class_pred_histogram.png
+# 6. Plotting Channel Distribution (raw probability outputs segmentation masks) Histogram
+    # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs --output_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results/0.raw.0.npy --task plot_channel_distribution --save_channel_prob_hist /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/raw_channel_pred_histogram.png
+
+# 7. Save Probability Maps Using Subplots:
+    # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs --output_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results/0.raw.0.npy --task visualize_probability_maps_with_subplots --save_visualization /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/probmap_segmentation_mask.png
+    # python script_name.py --wsi_path /path/to/wsi.svs --output_path /path/to/output.npy --task visualize_probability_maps_with_subplots --save_visualization /path/to/save/probability_maps.png
+
+# 8. Save Both Probability Maps and Segmentation Results:
+
+    # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs --output_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results/0.raw.0.npy --task visualize_segmentation_results --save_visualization /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/segmentation_visualizations.png
+    # python script_name.py --wsi_path /path/to/wsi.svs --output_path /path/to/output.npy --task visualize_segmentation_results --save_visualization /path/to/save/segmentation_visualizations.png
+
+# 9. Segmentation mask 
+# 9.1 To run the script with side-by-side comparison:
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 16001 \
+#     --y_start 48001 \
+#     --patch_size 4000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_16001_48001_4000.png \
+#     --show_side_by_side
+
+# Pick a different patch with more tumor regions ./72001_24001_4000_4000_0.2277_1-features.csv
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 72001 \
+#     --y_start 24001 \
+#     --patch_size 4000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_72001_24001_4000.png \
+#     --show_side_by_side
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 72001 \
+#     --y_start 44001 \
+#     --patch_size 10000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_72001_44001_10000.png \
+#     --show_side_by_side
+
+# 
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 66001 \
+#     --y_start 52001 \
+#     --patch_size 10000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_66001_52001_10000.png \
+#     --show_side_by_side
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 66001 \
+#     --y_start 16001 \
+#     --patch_size 8000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_66001_16001_8000.png \
+#     --show_side_by_side
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 66001 \
+#     --y_start 8001 \
+#     --patch_size 8000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_66001_8001_8000.png \
+#     --show_side_by_side
+
+# DID NOT WORK! I SUSPECT IT'S BECAUSE THE .npy output need to be transpoed and the dimensions are swapped 
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 108001 \
+#     --y_start 44001 \
+#     --patch_size 4000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_108001_44001_8000.png \
+#     --show_side_by_side
+
+# Now I swapped the x_start and y_start. The segmentation mask of the subplotted but not the wsi. 
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 44001 \
+#     --y_start 108001 \
+#     --patch_size 4000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_44001_108001_8000.png \
+#     --show_side_by_side
+
+# Now try: given a defined patch coordinates .npy transpose the x and y coordinates so the dimensions swap. Then hopefully this will result in correct matching of the WSI and its segmentation mask.
+# IT WORKED!!! This below gave the correct orientation of the layover. 
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#    --task segmentation_overlay \
+#    --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#    --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#    --x_start 108001 \
+#    --y_start 44001 \
+#    --patch_size 1000 \
+#    --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_108001_44001_1000_transposedmask2.png \
+#    --show_side_by_side \
+#    --transpose_segmask
+
+# only the overlay 
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#    --task segmentation_overlay \
+#    --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#    --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#    --x_start 108001 \
+#    --y_start 44001 \
+#    --patch_size 4000 \
+#    --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_overlay_image_108001_44001_4000_transposedmask2.png \
+#    --transpose_segmask
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#    --task segmentation_overlay \
+#    --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#    --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#    --x_start 108001 \
+#    --y_start 44001 \
+#    --patch_size 4000 \
+#    --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_108001_44001_4000_transposedmask2.png \
+#    --show_side_by_side \
+#    --transpose_segmask
+
+
+# !!!!
+# Now add the --transpose_segmask to the previous command to transpose the segmentation mask along x and y, and see things are more correct 
+
+#RERUN!! SOME OF THESE, VISUAL INSPECTION
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 16001 \
+#     --y_start 48001 \
+#     --patch_size 4000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_16001_48001_4000_transposedmask.png \
+#     --show_side_by_side \
+#     --transpose_segmask
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 44001 \
+#     --y_start 108001 \
+#     --patch_size 4000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_44001_108001_8000_transposedmask.png \
+#     --show_side_by_side \
+#     --transpose_segmask
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 66001 \
+#     --y_start 16001 \
+#     --patch_size 8000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_66001_16001_8000_transposedmask.png \
+#     --show_side_by_side \
+#     --transpose_segmask
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 66001 \
+#     --y_start 52001 \
+#     --patch_size 10000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_66001_52001_10000_transposedmask.png \
+#     --show_side_by_side \
+#     --transpose_segmask
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 66001 \
+#     --y_start 8001 \
+#     --patch_size 8000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_66001_8001_8000_transposedmask.png \
+#     --show_side_by_side \
+#     --transpose_segmask
+
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 72001 \
+#     --y_start 24001 \
+#     --patch_size 4000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_72001_24001_4000_transposedmask.png \
+#     --show_side_by_side \
+#     --transpose_segmask
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 72001 \
+#     --y_start 44001 \
+#     --patch_size 10000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_72001_44001_10000_transposedmask.png \
+#     --show_side_by_side \
+#     --transpose_segmask
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 72001 \
+#     --y_start 44001 \
+#     --patch_size 10000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_72001_44001_10000_transposedmask.png \
+#     --show_side_by_side \
+#     --transpose_segmask
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 72001 \
+#     --y_start 24001 \
+#     --patch_size 4000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_72001_24001_4000_transposedmask.png \
+#     --show_side_by_side \
+#     --transpose_segmask
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 72001 \
+#     --y_start 44001 \
+#     --patch_size 10000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_72001_44001_10000_transposedmask.png \
+#     --show_side_by_side \
+#     --transpose_segmask
+
 
 # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation2.py \
 #     --task segmentation_overlay \
@@ -1037,16 +1516,29 @@ if __name__ == "__main__":
 #    --show_side_by_side \
 #    --transpose_segmask
 
-# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation2.py \
+# Try a patch that's on the side (more white space) to see how it was handled
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
 #     --task segmentation_overlay \
 #     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
 #     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
-#     --x_start 72001 \
-#     --y_start 24001 \
+#     --x_start 4001 \
+#     --y_start 4001 \
 #     --patch_size 4000 \
-#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_72001_24001_4000_transposedmask_SANITY2.png \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_4001_4001_4000_transposedmask.png \
 #     --show_side_by_side \
 #     --transpose_segmask
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 12001 \
+#     --y_start 12001 \
+#     --patch_size 8000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_12001_12001_8000_transposedmask.png \
+#     --show_side_by_side \
+#     --transpose_segmask
+
 
 
 # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
@@ -1054,8 +1546,84 @@ if __name__ == "__main__":
 #     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
 #     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
 #     --x_start 72001 \
-#     --y_start 24001 \
-#     --patch_size 4000 \
-#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_72001_24001_4000_transposedmask_SANITY.png \
+#     --y_start 44001 \
+#     --patch_size 10000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_72001_44001_10000_transposedmask.png \
 #     --show_side_by_side \
 #     --transpose_segmask
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 72001 \
+#     --y_start 44001 \
+#     --patch_size 10000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_72001_44001_10000_transposedmask2.png \
+#     --show_side_by_side \
+#     --transpose_segmask
+
+# ISSUE: it seems like all the glass/white space in the backgroud were automatically assigned to the "Tumor" class in red. This is not good!!.
+# Need to fix this next!!!!
+
+
+# 9.2 To run the script without side-by-side comparison and only the overlay 
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --x_start 16001 \
+#     --y_start 48001 \
+#     --patch_size 4000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_overlay_image.png \
+#     --transpose_segmask
+
+# Example paths: 
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --task npy_plot \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --channels 0 1 2 3 4 \
+#     --x_start 16001 \
+#     --y_start 48001 \
+#     --patch_size 4000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/segmask_slice_image_16001_48001_4000_5classes.png
+
+# 10. Plotting Full Segmentation Mask
+
+
+# Full pic too big! 
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task plot_full_segmentation_mask \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/full_segmentation_mask.png
+#     --full_image
+
+# Full segmenation mask but on the 20x resolution
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task plot_full_segmentation_mask \
+#     --npy_file_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results/0.raw.0.npy \
+#     --save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/full_segmentation_mask_20xres.png \
+#     --full_image
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#       --task plot_full_segmentation_mask \
+#       --npy_file_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results/0.raw.0.npy \
+#       --save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/full_seg_mask_20x.png \
+#       --full_image
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task save_patch_segmentation_masks \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --save_dir /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/patches \
+#     --patch_size 10000
+
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task save_patch_segmentation_masks \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --save_dir /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/patches \
+#     --patch_size 10000
+

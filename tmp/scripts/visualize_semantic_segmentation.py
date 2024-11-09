@@ -20,7 +20,7 @@ import cupy as cp
 from matplotlib.patches import Patch 
 
 # Set matplotlib parameters for consistent visualization
-plt.rcParams.update({"font.size": 5, "figure.dpi": 150, "figure.facecolor": "white"})
+plt.rcParams.update({"font.size": 5, "figure.dpi": 600, "figure.facecolor": "white"})
 
 # Clear previous handlers for the logger
 if logging.getLogger().hasHandlers():
@@ -294,7 +294,7 @@ class WSISegmentVisualizer:
         plt.title("Class Distribution",fontsize=28)
         plt.show()
         # save histogram 
-        plt.savefig(save_class_hist)
+        plt.savefig(save_class_hist,dpi=600)
     
     def plot_channel_distribution(self,save_channel_prob_hist):
         """
@@ -326,7 +326,7 @@ class WSISegmentVisualizer:
         plt.show()
         
         # Save the histogram
-        plt.savefig(save_channel_prob_hist)
+        plt.savefig(save_channel_prob_hist,dpi=600)
         print(f"Channel probability distribution histogram saved to {save_channel_prob_hist}")
 
     def generate_segmentation_mask(self):
@@ -374,7 +374,7 @@ class WSISegmentVisualizer:
         fig.suptitle("Probability Maps for Each Class", fontsize=22, y=0.85)
         
         if save_path:
-            plt.savefig(save_path, bbox_inches="tight")
+            plt.savefig(save_path, bbox_inches="tight",dpi=600)
             self.logger.info("Probability maps saved to %s", save_path)
         
         plt.show()
@@ -399,7 +399,7 @@ class WSISegmentVisualizer:
         # Save if specified
         if save_path:
             probability_maps_path = save_path.replace(".png", "_probability_maps.png")
-            plt.savefig(probability_maps_path)
+            plt.savefig(probability_maps_path,dpi=600)
             self.logger.info("Probability maps saved to %s", probability_maps_path)
 
         plt.show()
@@ -424,7 +424,7 @@ class WSISegmentVisualizer:
         # Save if specified
         if save_path:
             segmentation_results_path = save_path.replace(".png", "_segmentation_results.png")
-            plt.savefig(segmentation_results_path)
+            plt.savefig(segmentation_results_path,dpi=600)
             self.logger.info("Segmentation results saved to %s", segmentation_results_path)
         
         plt.show()
@@ -472,20 +472,57 @@ class NpyImagePlotter:
         except Exception as e:
             print(f"An error occurred: {e}")
 
+
+    # def extract_patch(self):
+    #     """Extract a patch from the loaded data based on x_start, y_start, and patch_size."""
+    #     if self.data is None:
+    #         self.load_data()
+
+    #     if self.full_image:
+    #         patch = self.data  # Return the entire data if full image is selected
+    #     else:
+    #         patch = self.data[self.x_start:self.x_start + self.patch_size,
+    #                           self.y_start:self.y_start + self.patch_size, :]
+
+    #     # Transpose the patch if the transpose_segmask option is enabled
+    #     if self.transpose_segmask:
+    #         patch = patch.transpose((1, 0, 2))  # Swap x and y axes for the patch
+    #         print(f"Transposed patch with shape: {patch.shape}")
+    #     else:
+    #         print(f"Extracted patch with shape: {patch.shape}")
+
+    #     return patch    
+
     def extract_patch(self):
         """Extract a patch from the loaded data based on x_start, y_start, and patch_size."""
         if self.data is None:
             self.load_data()
-        
-        if self.full_image:
-            return self.data  # Return the entire data if full image is selected
-        
-        patch = self.data[self.x_start:self.x_start + self.patch_size, 
-                          self.y_start:self.y_start + self.patch_size, :]
-        print(f"Extracted patch with shape: {patch.shape}")
+
+        print(f"Data shape: {self.data.shape}")
+        print(f"x_start: {self.x_start}, y_start: {self.y_start}, patch_size: {self.patch_size}")
+
+        try:
+            if self.full_image:
+                patch = self.data  # Return the entire data if full image is selected
+            else:
+                # Adjust slicing logic and add debug statements
+                patch = self.data[self.x_start:self.x_start + self.patch_size,
+                                self.y_start:self.y_start + self.patch_size, :]
+                print(f"Extracted patch shape: {patch.shape}")
+        except IndexError as e:
+            print(f"IndexError in extract_patch: {e}")
+            print(f"Data shape might be smaller than expected at the specified start and patch size.")
+            raise
+
+        # Transpose the patch if the transpose_segmask option is enabled
+        if self.transpose_segmask:
+            patch = patch.transpose((1, 0, 2))  # Swap x and y axes for the patch
+            print(f"Transposed patch with shape: {patch.shape}")
+        else:
+            print(f"Extracted patch with shape: {patch.shape}")
+
         return patch
-    
-    
+
     def extract_slices(self):
         """Extract 2D slices of specified size from the loaded data for each channel."""
         if self.data is None:
@@ -514,7 +551,7 @@ class NpyImagePlotter:
 
             # Transpose the segmentation mask if specified
             if self.transpose_segmask:
-                self.segmentation_mask = self.segmentation_mask.T
+                self.segmentation_mask = self.segmentation_mask.transpose((1, 0, 2))
                 print("Segmentation mask transposed for entire image.")
         
         # If full_image is False, generate mask for a specific patch
@@ -568,12 +605,188 @@ class NpyImagePlotter:
 
         # Save the figure if a path is specified
         if save_path:
-            plt.savefig(save_path, bbox_inches="tight")
+            plt.savefig(save_path, bbox_inches="tight",dpi=600)
             print(f"Segmentation mask image saved to {save_path}")
         
         plt.show()
         
 
+    # def overlay_segmentation_mask(self, wsi_path, show_side_by_side=False, save_path=None):
+    #     """
+    #     Display either just the segmentation overlay or a side-by-side comparison of the WSI patch and the segmentation overlay.
+
+    #     Args:
+    #         wsi_path (str): Path to the WSI file.
+    #         show_side_by_side (bool): If True, show the original WSI patch and overlay side-by-side. Default is False.
+    #         save_path (str, optional): Path to save the comparison image. Default is None.
+    #     """
+
+    #     # Generate label-color dictionary using self.label_dict
+    #     print("Generating label-color dictionary for segmentation classes.")
+    #     label_color_dict = {}
+    #     colors = cm.get_cmap("Set1").colors
+    #     for class_name, label in self.label_dict.items():
+    #         label_color_dict[label] = (class_name, 255 * np.array(colors[label]))
+
+    #     # Open the WSI file with WSIReader and obtain the 40x mpp value
+    #     print("Opening WSI file and obtaining 40x mpp resolution.")
+    #     wsi_reader = WSIReader.open(wsi_path)
+    #     mpp_40x = wsi_reader.convert_resolution_units(40, "power", "mpp")
+    #     print(f"Using 40x resolution in mpp: {mpp_40x}")
+    #     # print the dimension of the wsi file
+    #     print("WSI dimensions:", wsi_reader.slide_dimensions(mpp_40x, "mpp"))
+
+    #     # Use read_rect to directly extract the patch from the WSI at the desired coordinates
+    #     print(f"Extracting WSI patch at coordinates (x_start={self.x_start}, y_start={self.y_start}) with size {self.patch_size}x{self.patch_size} at 40x mpp resolution.")
+    #     wsi_patch = wsi_reader.read_rect(location=(self.x_start, self.y_start), size=(self.patch_size, self.patch_size), resolution=mpp_40x, units="mpp")
+    #     print(f"WSI patch extracted with shape: {wsi_patch.shape}")
+
+    #     # Generate the overlay
+    #     print("Creating segmentation overlay.")
+    #     overlay = self.create_overlay(wsi_patch, self.segmentation_mask, label_color_dict)
+
+    #     # Display based on the `show_side_by_side` flag
+    #     if show_side_by_side:
+    #         print("Displaying side-by-side comparison.")
+    #         fig, axes = plt.subplots(1, 2, figsize=(14, 7))
+
+    #         # Left subplot: Original H&E WSI patch
+    #         axes[0].imshow(wsi_patch)
+    #         axes[0].set_title("Original H&E WSI Patch", fontsize=16)
+    #         axes[0].axis("off")
+
+    #         # Right subplot: Overlay of the segmentation mask
+    #         axes[1].imshow(overlay)
+    #         axes[1].set_title("Segmentation Overlay", fontsize=16)
+    #         axes[1].axis("off")
+
+    #         # Add a legend below the side-by-side plot
+    #         legend_handles = [
+    #             Patch(color=np.array(color) / 255, label=class_name)
+    #             for label, (class_name, color) in label_color_dict.items()
+    #         ]
+    #         fig.legend(handles=legend_handles, loc='lower center', ncol=len(self.label_dict), fontsize=12, title="Classes", title_fontsize=14)
+    #         fig.suptitle("WSI Patch and Semantic Segmentation Overlay", fontsize=20)
+    #     else:
+    #         print("Displaying only the segmentation overlay.")
+    #         plt.figure(figsize=(20, 20))
+    #         plt.imshow(overlay)
+    #         plt.title("Segmentation Overlay", fontsize=16)
+    #         plt.axis("off")
+
+    #         # Add legend to the single overlay plot
+    #         legend_handles = [
+    #             Patch(color=np.array(color) / 255, label=class_name)
+    #             for label, (class_name, color) in label_color_dict.items()
+    #         ]
+    #         plt.legend(handles=legend_handles, loc='lower center', ncol=len(self.label_dict), fontsize=12, title="Classes", title_fontsize=14)
+
+    #     # Save the figure if a path is specified
+    #     if save_path:
+    #         plt.savefig(save_path, bbox_inches="tight",dpi=600)
+    #         print(f"Image saved to {save_path}")
+        
+    #     plt.show()
+
+    #     return overlay
+
+    # def overlay_segmentation_mask(self, wsi_path, show_side_by_side=False, save_path=None):
+    #     """
+    #     Display either just the segmentation overlay or a side-by-side comparison of the WSI patch and the segmentation overlay.
+
+    #     Args:
+    #         wsi_path (str): Path to the WSI file.
+    #         show_side_by_side (bool): If True, show the original WSI patch and overlay side-by-side. Default is False.
+    #         save_path (str, optional): Path to save the comparison image. Default is None.
+    #     """
+
+    #     # Generate label-color dictionary using self.label_dict
+    #     label_color_dict = {label: (class_name, 255 * np.array(cm.get_cmap("Set1").colors[label]))
+    #                         for class_name, label in self.label_dict.items()}
+
+    #     # Open the WSI file and extract the patch
+    #     wsi_reader = WSIReader.open(wsi_path)
+    #     mpp_40x = wsi_reader.convert_resolution_units(40, "power", "mpp")
+    #     wsi_patch = wsi_reader.read_rect(
+    #         location=(self.x_start, self.y_start),
+    #         size=(self.patch_size, self.patch_size),
+    #         resolution=mpp_40x,
+    #         units="mpp"
+    #     )
+
+    #     # Check if segmentation mask is generated
+    #     if self.segmentation_mask is None:
+    #         print("Generating segmentation mask...")
+    #         self.generate_segmentation_mask()
+
+    #     # Create the overlay image
+    #     overlay = self.create_overlay(wsi_patch, self.segmentation_mask, label_color_dict)
+    #     print(f"Overlay shape: {overlay.shape}")
+    #     print(f"Segmentation mask shape: {self.segmentation_mask.shape}")
+    #     print(f"Values of the segmentation mask itself {self.segmentation_mask}")
+    #     # Debugging output
+    #     print(f"WSI patch shape: {wsi_patch.shape}")
+    #     print(f"Segmentation mask shape: {self.segmentation_mask.shape}")
+    #     print(f"Overlay shape: {overlay.shape}")
+
+    #     # Display the images based on show_side_by_side flag
+    #     if show_side_by_side:
+    #         fig, axes = plt.subplots(1, 2, figsize=(14, 7))
+    #         axes[0].imshow(wsi_patch)
+    #         axes[0].set_title("Original H&E WSI Patch")
+    #         axes[0].axis("off")
+
+    #         # Ensure overlay is visible on the second subplot
+    #         axes[1].imshow(overlay)
+    #         axes[1].set_title("Segmentation Overlay")
+    #         axes[1].axis("off")
+
+    #         # Add a legend
+    #         legend_handles = [Patch(color=np.array(color) / 255, label=class_name)
+    #                         for _, (class_name, color) in label_color_dict.items()]
+    #         fig.legend(handles=legend_handles, loc='lower center', ncol=len(self.label_dict), fontsize=12, title="Classes")
+    #     else:
+    #         plt.imshow(overlay)
+    #         plt.axis("off")
+
+    #     if save_path:
+    #         plt.savefig(save_path, bbox_inches="tight", dpi=600)
+    #         print(f"Overlay saved to {save_path}")
+        
+    #     plt.show()
+
+    # def create_overlay(self, wsi_patch, mask, label_color_dict, alpha=0.5):
+    #     """
+    #     Create an overlay of the segmentation mask on the WSI patch.
+
+    #     Args:
+    #         wsi_patch (np.ndarray): The WSI patch as a background image.
+    #         mask (np.ndarray): The segmentation mask.
+    #         label_color_dict (dict): Dictionary with label-color mappings in the form {label: (class_name, color)}.
+    #         alpha (float): Transparency level for the overlay.
+
+    #     Returns:
+    #         np.ndarray: The overlay image.
+    #     """
+    #     overlay = np.copy(wsi_patch)
+
+    #     for label, (class_name, color) in label_color_dict.items():
+    #         # Check if color is defined correctly as an RGB tuple
+    #         if not isinstance(color, (list, tuple)) or len(color) != 3:
+    #             print(f"Warning: Color for label '{class_name}' is not a valid RGB tuple. Skipping this label.")
+    #             continue
+
+    #         # Create a mask for the current class
+    #         class_mask = (mask == label)
+
+    #         # Overlay the color with specified transparency
+    #         for c in range(3):  # Assuming RGB channels
+    #             overlay[..., c] = np.where(class_mask, 
+    #                                     overlay[..., c] * (1 - alpha) + color[c] * alpha, 
+    #                                     overlay[..., c])
+
+    #     return overlay
+   
     def overlay_segmentation_mask(self, wsi_path, show_side_by_side=False, save_path=None):
         """
         Display either just the segmentation overlay or a side-by-side comparison of the WSI patch and the segmentation overlay.
@@ -583,72 +796,65 @@ class NpyImagePlotter:
             show_side_by_side (bool): If True, show the original WSI patch and overlay side-by-side. Default is False.
             save_path (str, optional): Path to save the comparison image. Default is None.
         """
-        # Generate label-color dictionary using self.label_dict
-        print("Generating label-color dictionary for segmentation classes.")
-        label_color_dict = {}
-        colors = cm.get_cmap("Set1").colors
-        for class_name, label in self.label_dict.items():
-            label_color_dict[label] = (class_name, 255 * np.array(colors[label]))
 
-        # Open the WSI file with WSIReader and obtain the 40x mpp value
-        print("Opening WSI file and obtaining 40x mpp resolution.")
+        # Explicit label-color dictionary with RGB tuples
+        label_color_dict = {
+            0: ("Tumour", (255, 0, 0)),          # Red for Tumour
+            1: ("Stroma", (0, 0, 255)),          # Blue for Stroma
+            2: ("Inflammatory", (0, 128, 0)),    # Green for Inflammatory
+            3: ("Necrosis", (128, 0, 128)),      # Purple for Necrosis
+            4: ("Others", (255, 165, 0))         # Orange for Others
+        }
+
+        # Open the WSI file and extract the patch
         wsi_reader = WSIReader.open(wsi_path)
         mpp_40x = wsi_reader.convert_resolution_units(40, "power", "mpp")
-        print(f"Using 40x resolution in mpp: {mpp_40x}")
-        # print the dimension of the wsi file
-        print("WSI dimensions:", wsi_reader.slide_dimensions(mpp_40x, "mpp"))
+        wsi_patch = wsi_reader.read_rect(
+            location=(self.x_start, self.y_start),
+            size=(self.patch_size, self.patch_size),
+            resolution=mpp_40x,
+            units="mpp"
+        )
 
-        # Use read_rect to directly extract the patch from the WSI at the desired coordinates
-        print(f"Extracting WSI patch at coordinates (x_start={self.x_start}, y_start={self.y_start}) with size {self.patch_size}x{self.patch_size} at 40x mpp resolution.")
-        wsi_patch = wsi_reader.read_rect(location=(self.x_start, self.y_start), size=(self.patch_size, self.patch_size), resolution=mpp_40x, units="mpp")
-        print(f"WSI patch extracted with shape: {wsi_patch.shape}")
+        # Check if segmentation mask is generated
+        if self.segmentation_mask is None:
+            print("Generating segmentation mask...")
+            self.generate_segmentation_mask()
 
-        # Generate the overlay
-        print("Creating segmentation overlay.")
+        # Create the overlay image
         overlay = self.create_overlay(wsi_patch, self.segmentation_mask, label_color_dict)
 
-        # Display based on the `show_side_by_side` flag
-        if show_side_by_side:
-            print("Displaying side-by-side comparison.")
-            fig, axes = plt.subplots(1, 2, figsize=(14, 7))
+        # Debugging output
+        print(f"WSI patch shape: {wsi_patch.shape}")
+        print(f"Segmentation mask shape: {self.segmentation_mask.shape}")
+        print(f"Overlay shape: {overlay.shape}")
 
-            # Left subplot: Original H&E WSI patch
+        # Display the images based on show_side_by_side flag
+        if show_side_by_side:
+            fig, axes = plt.subplots(1, 2, figsize=(14, 7))
             axes[0].imshow(wsi_patch)
-            axes[0].set_title("Original H&E WSI Patch", fontsize=16)
+            axes[0].set_title("Original H&E WSI Patch")
             axes[0].axis("off")
 
-            # Right subplot: Overlay of the segmentation mask
+            # Ensure overlay is visible on the second subplot
             axes[1].imshow(overlay)
-            axes[1].set_title("Segmentation Overlay", fontsize=16)
+            axes[1].set_title("Segmentation Overlay")
             axes[1].axis("off")
 
-            # Add a legend below the side-by-side plot
-            legend_handles = [
-                Patch(color=np.array(color) / 255, label=class_name)
-                for label, (class_name, color) in label_color_dict.items()
-            ]
-            fig.legend(handles=legend_handles, loc='lower center', ncol=len(self.label_dict), fontsize=12, title="Classes", title_fontsize=14)
-            fig.suptitle("WSI Patch and Semantic Segmentation Overlay", fontsize=20)
+            # Add a legend
+            legend_handles = [Patch(color=np.array(color) / 255, label=class_name)
+                            for _, (class_name, color) in label_color_dict.items()]
+            fig.legend(handles=legend_handles, loc='lower center', ncol=len(self.label_dict), fontsize=12, title="Classes")
         else:
-            print("Displaying only the segmentation overlay.")
-            plt.figure(figsize=(6, 6))
             plt.imshow(overlay)
-            plt.title("Segmentation Overlay", fontsize=16)
             plt.axis("off")
 
-            # Add legend to the single overlay plot
-            legend_handles = [
-                Patch(color=np.array(color) / 255, label=class_name)
-                for label, (class_name, color) in label_color_dict.items()
-            ]
-            plt.legend(handles=legend_handles, loc='lower center', ncol=len(self.label_dict), fontsize=12, title="Classes", title_fontsize=14)
-
-        # Save the figure if a path is specified
         if save_path:
-            plt.savefig(save_path, bbox_inches="tight")
-            print(f"Image saved to {save_path}")
+            plt.savefig(save_path, bbox_inches="tight", dpi=600)
+            print(f"Overlay saved to {save_path}")
         
         plt.show()
+
 
     def create_overlay(self, wsi_patch, mask, label_color_dict, alpha=0.5):
         """
@@ -657,7 +863,7 @@ class NpyImagePlotter:
         Args:
             wsi_patch (np.ndarray): The WSI patch as a background image.
             mask (np.ndarray): The segmentation mask.
-            label_color_dict (dict): Dictionary with label-color mappings.
+            label_color_dict (dict): Dictionary with label-color mappings in the form {label: (class_name, color)}.
             alpha (float): Transparency level for the overlay.
 
         Returns:
@@ -676,8 +882,32 @@ class NpyImagePlotter:
                                         overlay[..., c])
 
         return overlay
-    
 
+    def get_colored_mask(self):
+        """
+        Generate and return the colored segmentation mask as a NumPy array.
+
+        Returns:
+            np.ndarray: RGB image of the colored segmentation mask.
+        """
+        if self.segmentation_mask is None:
+            self.generate_segmentation_mask()
+
+        # Generate label-color dictionary
+        print("Generating label-color dictionary for segmentation classes.")
+        label_color_dict = {}
+        colors = plt.cm.get_cmap("Set1").colors  # Use Set1 colormap for distinct colors
+        for class_name, label in self.label_dict.items():
+            label_color_dict[label] = (class_name, 255 * np.array(colors[label]))
+
+        # Create an RGB image for the segmentation mask based on label_color_dict
+        overlay = np.zeros((*self.segmentation_mask.shape, 3), dtype=np.uint8)
+        for label, (class_name, color) in label_color_dict.items():
+            mask = self.segmentation_mask == label
+            overlay[mask] = color
+
+        return overlay
+    
     def plot_slices(self, slices, label_dict=None, save_path=None):
         """
         Plot the extracted 2D slices for each channel as subplots and optionally save the image.
@@ -725,7 +955,7 @@ class NpyImagePlotter:
     
         # Save the figure if a path is specified
         if save_path:
-            plt.savefig(save_path, bbox_inches="tight")
+            plt.savefig(save_path, bbox_inches="tight",dpi=600)
             print(f"Plot saved to {save_path}")
         
         plt.show()
@@ -780,7 +1010,7 @@ class NpyImagePlotter:
         plt.imshow(segmentation_patch, cmap="tab10")
         plt.title(f"Segmentation Mask (x={x_start}, y={y_start}, size={patch_size})", fontsize=16)
         plt.axis("off")
-        plt.savefig(save_path, bbox_inches="tight")
+        plt.savefig(save_path, bbox_inches="tight",dpi=600)
         print(f"Saved segmentation patch to {save_path}")
         plt.close()
 
@@ -955,6 +1185,7 @@ if __name__ == "__main__":
     parser.add_argument("--patch_size", type=int, default=512, help="Size of the patch to visualize (for visualize_channel_x_y_patch)")
     parser.add_argument("--expected_shape", type=str, default="135168,105472,5", help="Expected shape of the output as 'height,width,channels'")
     parser.add_argument("--chunk_size", type=int, default=1024, help="Chunk size for processing min and max with memory mapping")
+    # parser.add_argument("--full_image", action="store_true", help="If set, processes the entire segmentation mask image.")
 
     # New arguments for npy_plot
     parser.add_argument("--npy_file_path", type=str, help="Path to the .npy file for npy_plot task.")
@@ -1028,7 +1259,29 @@ if __name__ == "__main__":
 
     # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy --task visualize_channel_x_y_patch --channel_index 0 --start_x 16001 --start_y 48001 --patch_size 4000
 #3.2 visualize segmentation outpus as a 2D slice of a certain channel 
-    # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py --output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy --task npy_plot --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy --channels 0 1 2 3 4 --x_start 16001 --y_start 48001 --patch_size 4000 --save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/slice_image_16001_48001_4000_5classes.png
+
+    # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+        # --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+        # --output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+        # --task npy_plot \
+        # --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+        # --channels 0 1 2 3 4 \
+        # --x_start 16001 \
+        # --y_start 48001 \
+        # --patch_size 4000 \ 
+        # --save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/slice_image_16001_48001_4000_5classes.png
+
+    # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+    #     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+    #     --output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+    #     --task npy_plot \
+    #     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+    #     --channels 0 1 2 3 4 \
+    #     --x_start 44001 \
+    #     --y_start 108001 \
+    #     --patch_size 4000 \
+    #     --save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/slice_image_108001_44001_4000_5classes.png \
+    #     --transpose_segmask
 
 
 # 4. Saving Each Channel as an Image 
@@ -1313,6 +1566,17 @@ if __name__ == "__main__":
 #     --y_start 44001 \
 #     --patch_size 10000 \
 #     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_72001_44001_10000_transposedmask.png \
+#     --show_side_by_side \
+#     --transpose_segmask
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --x_start 72001 \
+#     --y_start 44001 \
+#     --patch_size 10000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/wsi_semanticseg_sidebyside_image_72001_44001_10000_transposedmask2.png \
 #     --show_side_by_side \
 #     --transpose_segmask
 
