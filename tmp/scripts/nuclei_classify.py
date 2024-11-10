@@ -176,109 +176,122 @@ class SegmentationVisualizer:
 
         plt.show()
 
-    def color_nuclei_contours(wsi_patch, nuclei_contours, segmentation_mask, label_color_dict, alpha=0.5):
+
+
+
+    def color_nuclei_contours(wsi_patch, nuclei_contours, segmentation_mask, label_color_dict, show_legend=True):
         """
-        Convert the color of nuclei contours based on the class of the nuclei where it's covered by the semantic segmentation mask.
+        Change the color of nuclei contours based on the corresponding semantic segmentation class and display a legend.
 
         Args:
             wsi_patch (np.ndarray): The WSI patch as a background image (shape: (H, W, 3)).
             nuclei_contours (np.ndarray): The nuclei contours overlay (shape: (H, W, 3)).
             segmentation_mask (np.ndarray): The segmentation mask (shape: (H, W)).
             label_color_dict (dict): Dictionary with label-color mappings.
-            alpha (float): Transparency level for the overlay.
+            show_legend (bool): Whether to display a legend of class colors. Default is True.
 
         Returns:
             np.ndarray: The overlay image with class-colored nuclei contours.
         """
-        # Start with a copy of the base WSI patch to create the overlay
-        overlay = np.copy(wsi_patch).astype(float) / 255  # Normalize to [0,1] for blending
+        # Debugging: Check type of label_color_dict immediately
+        print("Type of label_color_dict at function start:", type(label_color_dict))
+        print(f"label_color_dict is {label_color_dict}")
+        # HOW DID THIS SUDDENTLY BECOME NUMPY ARRAY AND NOT A DICTIONARY ANYMORE?!!!!
+        if not isinstance(label_color_dict, dict):
+            raise TypeError("label_color_dict should be a dictionary.")
+
+        # Make a copy of the WSI patch to overlay the colored nuclei contours
+        final_overlay = np.copy(wsi_patch)
+
+        # Debugging: Print label_color_dict contents before starting the loop
+        print("Contents of label_color_dict before loop:", label_color_dict)
 
         for label, (class_name, color) in label_color_dict.items():
-            # Create a mask for the current class
+            # Identify where the segmentation mask matches the current label
             class_mask = (segmentation_mask == label)
 
-            # Make sure mask has three channels (broadcasting if necessary)
+            # Ensure the mask has three channels for RGB broadcasting
             if class_mask.ndim == 2:
                 class_mask = np.stack([class_mask] * 3, axis=-1)
 
-            # Apply color with alpha blending to the nuclei contours
+            # Directly set the nuclei contour color to the class color without blending
             for c in range(3):  # RGB channels
-                nuclei_contours[..., c] = np.where(
-                    class_mask[..., c],
-                    nuclei_contours[..., c] * (1 - alpha) + color[c] * alpha,
-                    nuclei_contours[..., c]
+                final_overlay[..., c] = np.where(
+                    class_mask[..., c] & (nuclei_contours[..., c] > 0),  # Apply only where there are contours
+                    color[c],
+                    final_overlay[..., c]
                 )
 
-        # Overlay the nuclei contours on the original H&E patch
-        final_overlay = np.copy(overlay)
-        for c in range(3):  # RGB channels
-            final_overlay[..., c] = np.where(
-                nuclei_contours[..., c] > 0,  # Assuming non-zero values indicate contours
-                nuclei_contours[..., c],
-                final_overlay[..., c]
-            )
+        # Display the final image with the legend if required
+        plt.figure(figsize=(10, 10))
+        plt.imshow(final_overlay)
+        plt.axis("off")
 
-        # Convert back to uint8
-        return (final_overlay * 255).astype(np.uint8)
-
-
-    def overlay_colored_nuclei_contours(self, wsi_path, save_path=None):
- 
-            """
-            Overlay the H&E patch with nuclei contours and the semantic segmentation mask.
-
-            Args:
-                wsi_path (str): Path to the WSI file.
-                save_path (str, optional): Path to save the combined overlay image. Default is None.
-            """
-            # Generate the segmentation mask using NpyImagePlotter
-            self.segmentation_mask = self.semantic_plotter.generate_segmentation_mask()
-            print("Segmentation mask generated.")
-            print("Segmentation mask shape:", self.segmentation_mask.shape)
-            print("Unique values in segmentation mask:", np.unique(self.segmentation_mask))
-
-            # Generate label-color dictionary for legend
-            label_color_dict = {
-                label: (class_name, 255 * np.array(color))
-                for class_name, label, color in zip(self.label_dict.keys(), self.label_dict.values(), plt.cm.Set1.colors)
-            }
-
-            # Extract the H&E patch
-            wsi_patch = self._extract_he_patch()
-            print(f"H&E patch extracted with shape: {wsi_patch.shape}")
-
-            # Overlay nuclei contours on H&E
-            self.overlay_nuclei_contours = self.nuclei_mask.overlay_contour(wsi_patch)
-            print("Nuclei contours overlay created.")
-            print(f"Data type of overlay image: {type(self.overlay_nuclei_contours)}")
-            print(f"Nuclei Contours Overlay image shape: {self.overlay_nuclei_contours.shape}")
-
-            # Ensure segmentation mask shape matches the overlay shape
-            if self.segmentation_mask.shape != self.overlay_nuclei_contours.shape[:2]:
-                raise ValueError("Segmentation mask shape does not match overlay shape.")
-
-            # Convert the color of nuclei contours based on the class of the nuclei
-            final_overlay = self.color_nuclei_contours(wsi_patch, self.overlay_nuclei_contours, self.segmentation_mask, label_color_dict, alpha=0.5)
-
-            # Display the final overlay with legend
-            plt.figure(figsize=(10, 10))
-            plt.imshow(final_overlay)
-            plt.title("Overlay of H&E with Class-Colored Nuclei Contours", fontsize=20)
-            plt.axis("off")
-
-            # Add a legend for the segmentation classes
+        if show_legend:
             legend_handles = [
                 Patch(color=np.array(color) / 255, label=class_name)
                 for label, (class_name, color) in label_color_dict.items()
             ]
-            plt.legend(handles=legend_handles, loc='lower center', ncol=len(self.label_dict), fontsize=12, title="Classes", title_fontsize=14)
+            plt.legend(handles=legend_handles, loc='lower center', ncol=len(label_color_dict), fontsize=12,
+                    title="Nuclei Contour Classes", title_fontsize=14, bbox_to_anchor=(0.5, -0.05))
 
-            # Save the figure if a path is specified
-            if save_path:
-                plt.savefig(save_path, bbox_inches="tight", dpi=600)
-                print(f"Overlay image saved to {save_path}")
+        plt.show()
 
-            plt.show()
+        return final_overlay
+
+
+    def overlay_colored_nuclei_contours(self, wsi_path, save_path=None):
+
+        """
+        Overlay the H&E patch with nuclei contours and the semantic segmentation mask.
+
+        Args:
+            wsi_path (str): Path to the WSI file.
+            save_path (str, optional): Path to save the combined overlay image. Default is None.
+        """
+        # Generate the segmentation mask using NpyImagePlotter
+        self.segmentation_mask = self.semantic_plotter.generate_segmentation_mask()
+        print("Segmentation mask generated.")
+        print("Segmentation mask shape:", self.segmentation_mask.shape)
+        print("Unique values in segmentation mask:", np.unique(self.segmentation_mask))
+
+        # Define the label dictionary and color map
+        label_color_dict = {
+            label: (class_name, (int(255 * color[0]), int(255 * color[1]), int(255 * color[2])))
+            for label, (class_name, color) in enumerate(zip(self.label_dict.keys(), plt.cm.Set1.colors))
+        }
+        print("overlay_label_color_dict confirmed as dictionary:", label_color_dict)
+
+        # Extract the H&E patch
+        wsi_patch = self._extract_he_patch()
+        print(f"H&E patch extracted with shape: {wsi_patch.shape}")
+
+        # Overlay nuclei contours on H&E
+        overlay_image = self.nuclei_mask.overlay_colored_contours(wsi_patch, self.segmentation_mask, self.label_dict, label_color_dict)
+        print("Nuclei contours overlay created.")
+        print(f"Data type of overlay image: {type(overlay_image)}")
+        print(f"Nuclei Contours Overlay image shape: {overlay_image.shape}")
+
+        # Display the final overlay with legend
+        plt.figure(figsize=(10, 10))
+        plt.imshow(overlay_image)
+        plt.title("Overlay of H&E with Class-Colored Nuclei Contours", fontsize=32)
+        plt.axis("off")
+
+        # Add a legend for the segmentation classes
+        legend_handles = [
+            Patch(color=np.array(color) / 255, label=class_name)
+            for label, (class_name, color) in label_color_dict.items()
+        ]
+        plt.legend(handles=legend_handles, loc='lower center', ncol=len(self.label_dict), fontsize=12, title="Classes", title_fontsize=14)
+
+        # Save the figure if a path is specified
+        if save_path:
+            plt.savefig(save_path, bbox_inches="tight", dpi=600)
+            print(f"Overlay image saved to {save_path}")
+
+        plt.show()
+
 
     def _extract_he_patch(self):
         """
@@ -335,7 +348,7 @@ if __name__ == "__main__":
 #Use Case
 
 # 1. subplot figure with the original H&E patch, nuclei segmentation mask, and semantic segmentation mask.
-# Works well! 
+# Works well! Code pushed
 # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/nuclei_classify.py \
 #     --task combined_subplots \
 #     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
@@ -358,6 +371,7 @@ if __name__ == "__main__":
 #     --save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/patch_108001_44001_4000/108001_44001_4000_combined_he_nuclseg_semseg2.png \
 #     --transpose_segmask
 
+# Works well, code pushed
 # 2. overlay figure with the original H&E patch, nuclei segmentation mask, and semantic segmentation mask.
 # this did not include the semantic segmentation mask overlay
 # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/nuclei_classify.py \
