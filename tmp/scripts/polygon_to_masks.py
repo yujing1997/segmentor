@@ -152,41 +152,7 @@ class NucleiSegmentationMask:
         cv2.drawContours(contour_overlay, contours, -1, color, 2)  # Draw contours with thickness 2
         return contour_overlay
 
-    def plot_side_by_side(self, wsi_path, show_overlay=False, save_path=None):
-        # Open WSI using TiaToolbox WSIReader at 40x mpp
-        print("Opening WSI file with TiaToolbox WSIReader.")
-        wsi_reader = WSIReader.open(wsi_path)
-        mpp_40x = wsi_reader.convert_resolution_units(40, "power", "mpp")
-        
-        print(f"Reading H&E patch from WSI at 40x mpp, offset {self.offset}, size {self.patch_size}.")
-        he_patch = wsi_reader.read_rect(location=self.offset, size=self.patch_size, resolution=mpp_40x, units="mpp")
 
-        if self.transpose_mask:
-            he_patch = np.transpose(he_patch, (1, 0, 2))
-            print("Transposed H&E image to match mask orientation.")
-
-        # Overlay the mask on the H&E patch if requested
-        overlay_image = self.overlay_contour(he_patch) if show_overlay else None
-
-        fig, axes = plt.subplots(1, 3 if show_overlay else 2, figsize=(20, 20))
-        axes[0].imshow(he_patch)
-        axes[0].set_title("Original H&E Patch", fontsize=16)
-        axes[0].axis("off")
-
-        axes[1].imshow(self.mask, cmap="gray")
-        axes[1].set_title("Nuclei Segmentation Mask", fontsize=16)
-        axes[1].axis("off")
-
-        if show_overlay:
-            axes[2].imshow(overlay_image)
-            axes[2].set_title("H&E Patch with Nuclei Contours", fontsize=16)
-            axes[2].axis("off")
-
-        if save_path:
-            plt.savefig(save_path, bbox_inches="tight")
-            print(f"Saved side-by-side plot to {save_path}")
-        plt.show()
-        
 
     def plot_side_by_side(self, wsi_path, show_overlay=False, save_path=None):
         # Open WSI using TiaToolbox WSIReader at 40x mpp
@@ -300,7 +266,7 @@ def main(args):
     plotter.create_mask()
     
     if args.task == "polygon_to_mask":
-        # mask_generator = NucleiSegmentationMask(args.csv_path, patch_size=(args.patch_size, args.patch_size))
+        mask_generator = NucleiSegmentationMask(args.csv_path, patch_size=(args.patch_size, args.patch_size))
         # mask_generator.load_data()
         # mask_generator.create_mask()
         mask_generator.save_mask(args.output_path)
@@ -371,7 +337,7 @@ if __name__ == "__main__":
 # python polygon_to_mask.py --csv_path path/to/polygon.csv --task save_mask --save_mask_path path/to/save_mask.png
 
 
-# 3. Plot side-by-side with overlay:
+# 3. Plot side-by-side with overlay: original H&E patch, nuclei segmentation binary mask, and overlay contours
 
 # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/polygon_to_masks.py \
 #     --csv_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_polygon/108001_44001_4000_4000_0.2277_1-features.csv \
@@ -379,3 +345,10 @@ if __name__ == "__main__":
 #     --task plot_side_by_side \
 #     --show_overlay \
 #     --save_plot_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/patch_108001_44001_4000/108001_44001_4000_4000_0.2277_1-side_by_side.png
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/polygon_to_masks.py \
+#     --csv_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_polygon/108001_44001_4000_4000_0.2277_1-features.csv \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --task plot_side_by_side \
+#     --show_overlay \
+#     --save_plot_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/patch_108001_44001_4000/108001_44001_4000_4000_0.2277_1-side_by_side2.png
