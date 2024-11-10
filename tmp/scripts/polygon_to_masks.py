@@ -21,6 +21,8 @@ from matplotlib.patches import Patch
 from tiatoolbox import logger
 from tiatoolbox.wsicore.wsireader import WSIReader
 import torch
+from tqdm import tqdm
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
 class NucleiSegmentationMask:
@@ -129,8 +131,28 @@ class NucleiSegmentationMask:
         return contour_overlay
 
 
+    def calculate_area_in_square_microns(self,AreaInPixels, mpp):
+        """
+        Calculate the area in square microns given area in pixels and microns per pixel.
 
-    def classify_nuclei(self, segmentation_mask, color_map):
+        Args:
+            AreaInPixels (int or float): The area in pixels.
+            mpp (float): Microns per pixel.
+
+        Returns:
+            float: Area in square microns.
+        """
+        # Calculate the area in square microns
+        # mpp = microns per pixel
+        # AreaInPixels = area in pixels = microns^2
+        area_in_square_microns = AreaInPixels * (mpp ** 2)
+        return area_in_square_microns
+
+
+    # Below works well, but with a for-loop, parallelize was actually slower than this 
+    # I shall parallelize patches instead, not nuclei on the same patch
+
+    def classify_nuclei(self, segmentation_mask, color_map, mpp):
         """
         Classifies nuclei based on the majority class within each contour.
 
@@ -138,13 +160,15 @@ class NucleiSegmentationMask:
             segmentation_mask (numpy.ndarray): The semantic segmentation mask.
             color_map (dict): Dictionary mapping class indices to colors.
 
-        Returns:
-            list: A list of dictionaries containing contour and classification information.
+            Returns:
+                list: A list of dictionaries containing contour and classification information.
         """
         classified_nuclei = []
+        # self.mask is the binary mask of the nuclei segmentation
         contours, _ = cv2.findContours(self.mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        for contour in contours:
+        nuclei_num_per_patch = len(contours)
+        # Add a progress bar to the for loop
+        for contour in tqdm(contours, desc="Classifying nuclei"):
             # Create a mask for the current contour
             contour_mask = np.zeros_like(self.mask, dtype=np.uint8)
             cv2.drawContours(contour_mask, [contour], -1, 1, thickness=cv2.FILLED)
@@ -161,17 +185,44 @@ class NucleiSegmentationMask:
 
             # Get the color for the majority class
             color = color_map.get(majority_class, (255, 255, 255))  # Default to white if class not found
+            # Compute the area of the nucleus in pixels
+            area_in_pixels = cv2.contourArea(contour)
+            # Perimeter of the contour
+            perimeter = cv2.arcLength(contour, True)
+            # Convert the area to square microns
+            # Extract mpp value from dictionary if needed
+            if isinstance(mpp, dict) and 'power' in mpp:
+                mpp_value = mpp['power']
+            else:
+                mpp_value = mpp  # If it's already a float, just use it
+
+            area_in_square_microns = self.calculate_area_in_square_microns(area_in_pixels, mpp_value)
 
             # Store the classified information
             classified_nuclei.append({
                 'contour': contour,
                 'majority_class': majority_class,
-                'color': color
+                'color': color,
+                'AreaInPixels': area_in_pixels,
+                'perimeter': perimeter,
+                'AreaInSquareMicrons': area_in_square_microns,
+                'mpp': mpp_value    
             })
 
-        return classified_nuclei
+        return classified_nuclei, nuclei_num_per_patch
 
-    def overlay_colored_contours(self, image, segmentation_mask, label_dict, color_map, thickness=2):
+    def calculate_areas_from_csv(self):
+        """
+        Extracts the AreaInPixels from the CSV file.
+
+        Returns:
+            list: List of AreaInPixels values.
+        """
+        self.areas_from_csv = self.data['AreaInPixels'].tolist()
+        print("Areas from CSV extracted successfully.")
+        return self.areas_from_csv
+
+    def overlay_colored_contours(self, image, segmentation_mask, label_dict, color_map, mpp, thickness=2):
         """
         Overlays nuclei segmentation contours on the given image with colors based on the semantic segmentation mask.
 
@@ -186,15 +237,15 @@ class NucleiSegmentationMask:
             numpy.ndarray: The image with contours overlaid.
         """
         contour_overlay = image.copy()
-        classified_nuclei = self.classify_nuclei(segmentation_mask, color_map)
-
+        classified_nuclei, nuclei_num_per_patch = self.classify_nuclei(segmentation_mask, color_map,mpp)
+        # print(f"classified_nuclei: {classified_nuclei}")
         for nucleus in classified_nuclei:
             contour = nucleus['contour']
             color = nucleus['color']
-            print(f"color is {color}")
+            # print(f"color is {color}")
             cv2.drawContours(contour_overlay, [contour], -1, color[1], thickness)
 
-        return contour_overlay
+        return contour_overlay, classified_nuclei, nuclei_num_per_patch
 
     def plot_side_by_side(self, wsi_path, show_overlay=False, save_path=None):
         # Open WSI using TiaToolbox WSIReader at 40x mpp
@@ -270,11 +321,14 @@ class QA_NucleiMaskAreaAnalysis:
             area_in_mask = np.sum(self.binary_mask * nucleus_mask)
             self.areas_from_mask.append(area_in_mask)
         print("Areas from binary mask calculated successfully.")
-
+        return self.areas_from_mask
+        
     def calculate_areas_from_csv(self):
         self.areas_from_csv = self.original_data['AreaInPixels'].tolist()
         print("Areas from CSV extracted successfully.")
 
+        return self.areas_from_csv
+    
     def plot_overlapping_histogram(self):
         mean_area_mask = np.mean(self.areas_from_mask)
         mean_area_csv = np.mean(self.areas_from_csv)
@@ -323,6 +377,7 @@ def main(args):
     elif args.task == "plot_side_by_side":
         plotter.plot_side_by_side(wsi_path=args.wsi_path, show_overlay=args.show_overlay, save_path=args.save_plot_path)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Nuclei Segmentation and QA Analysis")
     parser.add_argument("--task", type=str, required=True, choices=["polygon_to_mask", 
@@ -336,6 +391,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_mask_path", type=str, help="Path to save the generated binary mask as an image")
     parser.add_argument("--save_plot_path", type=str, help="Path to save the side-by-side plot if specified")
     parser.add_argument("--show_overlay", action="store_true", help="Display H&E patch with nuclei contours overlaid")
+    parser.add_argument("--segmentation_output_path", type=str, help="Path to the .npy file for semantic segmentation")
 
     args = parser.parse_args()
     main(args)
@@ -394,3 +450,4 @@ if __name__ == "__main__":
 #     --task plot_side_by_side \
 #     --show_overlay \
 #     --save_plot_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/patch_108001_44001_4000/108001_44001_4000_4000_0.2277_1-side_by_side2.png
+

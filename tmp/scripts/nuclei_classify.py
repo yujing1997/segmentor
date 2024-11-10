@@ -67,6 +67,7 @@ class SegmentationVisualizer:
         self.semantic_plotter.load_data()
         self.semantic_plotter.generate_segmentation_mask()
         self.segmentation_mask = self.semantic_plotter.generate_segmentation_mask()
+        self.mpp = self.semantic_plotter.read_mpp_wsi(self.wsi_path)
         # self.wsi_patch = self._extract_he_patch()
         # self.overlay_nuclei_contours = self.nuclei_mask.overlay_contour(self.wsi_patch)
 
@@ -244,7 +245,7 @@ class SegmentationVisualizer:
 
 
 
-    def overlay_colored_nuclei_contours(self, wsi_path, save_path=None):
+    def overlay_colored_nuclei_contours(self, wsi_path, mpp, save_path=None):
         """
         Overlay the H&E patch with nuclei contours and the semantic segmentation mask.
 
@@ -269,8 +270,9 @@ class SegmentationVisualizer:
         wsi_patch = self._extract_he_patch()
         print(f"H&E patch extracted with shape: {wsi_patch.shape}")
 
+        print(f"mpp: {self.mpp['power']}")
         # Overlay nuclei contours on H&E
-        overlay_image = self.nuclei_mask.overlay_colored_contours(wsi_patch, self.segmentation_mask, self.label_dict, label_color_dict)
+        overlay_image, classified_nuclei, nuclei_num_per_patch = self.nuclei_mask.overlay_colored_contours(wsi_patch, self.segmentation_mask, self.label_dict, label_color_dict, self.mpp)
         print("Nuclei contours overlay created.")
         print(f"Data type of overlay image: {type(overlay_image)}")
         print(f"Nuclei Contours Overlay image shape: {overlay_image.shape}")
@@ -295,6 +297,60 @@ class SegmentationVisualizer:
             print(f"Overlay image saved to {save_path}")
 
         plt.show()
+        print(f"This patch has {nuclei_num_per_patch} nuclei.")
+        return overlay_image, classified_nuclei, nuclei_num_per_patch
+
+    # QA AreaInPixels from classified_nuclei against the original AreaInPixels from the polygon csv 
+
+
+    def extract_areas_from_classified_nuclei(self, classified_nuclei):
+        """
+        Extracts the AreaInPixels from the classified nuclei.
+
+        Args:
+            classified_nuclei (list): List of dictionaries containing classified nuclei information.
+
+        Returns:
+            list: List of AreaInPixels values.
+        """
+        return [nucleus['AreaInPixels'] for nucleus in classified_nuclei]
+
+    def plot_overlapping_histogram(self, areas_from_classified_nuclei):
+        """
+        Plots an overlapping histogram of AreaInPixels from classified nuclei and original CSV.
+
+        Args:
+            areas_from_classified_nuclei (list): List of AreaInPixels values from classified nuclei.
+        """
+        mean_area_classified = np.mean(areas_from_classified_nuclei)
+        mean_area_csv = np.mean(self.areas_from_csv)
+        plt.figure(figsize=(12, 8))
+        plt.hist(areas_from_classified_nuclei, bins=100, range=(0, 5000), alpha=0.5, label=f"Classified Nuclei (Mean Area: {mean_area_classified:.2f})", color='blue')
+        plt.hist(self.areas_from_csv, bins=100, range=(0, 5000), alpha=0.5, label=f"CSV Data (Mean Area: {mean_area_csv:.2f})", color='green')
+        plt.xlabel("Area in Pixels", fontsize=14)
+        plt.ylabel("Frequency", fontsize=14)
+        plt.title("Comparison of AreaInPixels Distributions", fontsize=16)
+        plt.legend(fontsize=12)
+        plt.tight_layout()
+        plt.savefig(self.output_path)
+        plt.show()
+        print(f"Histogram saved at {self.output_path}")
+        print(f"Mean Area from Classified Nuclei: {mean_area_classified:.2f}")
+        print(f"Mean Area from CSV: {mean_area_csv:.2f}")
+        print(f"Difference in Mean Area: {abs(mean_area_classified - mean_area_csv):.2f} pixels")
+
+    def run_analysis(self, segmentation_mask, color_map, mpp):
+        """
+        Runs the QA analysis by classifying nuclei and plotting the overlapping histogram.
+
+        Args:
+            segmentation_mask (numpy.ndarray): The semantic segmentation mask.
+            color_map (dict): Dictionary mapping class indices to colors.
+            mpp (float): Microns per pixel.
+        """
+        classified_nuclei, _ = self.classify_nuclei(segmentation_mask, color_map, mpp)
+        areas_from_classified_nuclei = self.extract_areas_from_classified_nuclei(classified_nuclei)
+        self.plot_overlapping_histogram(areas_from_classified_nuclei)
 
     def _extract_he_patch(self):
         """
@@ -327,13 +383,24 @@ def main(args):
     elif args.task == "save_individual":
         visualizer.save_individual_images(save_dir=args.save_dir)
     elif args.task == "overlay_colored_nuclei_contours":
-        visualizer.overlay_colored_nuclei_contours(wsi_path=args.wsi_path, save_path=args.save_path)
+        visualizer.overlay_colored_nuclei_contours(wsi_path=args.wsi_path, save_path=args.save_path, mpp=visualizer.mpp)
+
+    elif args.task == "qa_classified_nuclei":
+        visualizer.nuclei_mask.load_data()
+        visualizer.nuclei_mask.create_mask()
+        visualizer.nuclei_mask.calculate_areas_from_csv()
+        segmentation_mask = np.load(args.segmentation_output_path)  # Load the segmentation mask
+        color_map = {0: (255, 0, 0), 1: (0, 255, 0), 2: (0, 0, 255)}  # Example color map
+        mpp = 0.2277  # Example mpp value
+        visualizer.nuclei_mask.output_path = args.output_path  # Set the output path for the histogram
+        visualizer.nuclei_mask.run_analysis(segmentation_mask, color_map, mpp)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Segmentation Visualization Script")
     parser.add_argument("--task", type=str, required=True, choices=["combined_subplots", 
-                        "overlay_combined", "side_by_side", "save_individual", "overlay_colored_nuclei_contours"],
+                        "overlay_combined", "side_by_side", "save_individual", "overlay_colored_nuclei_contours",
+                        "qa_classified_nuclei"],
                         help="Task to execute")
     parser.add_argument("--wsi_path", type=str, required=True, help="Path to the WSI file")
     parser.add_argument("--csv_path", type=str, required=True, help="Path to the CSV file for nuclei segmentation")
@@ -421,3 +488,14 @@ if __name__ == "__main__":
 #     --save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/patch_108001_44001_4000/108001_44001_4000_overlay_colored_nuclei_contours.png \
 #     --transpose_segmask
 
+## THINK ABOUT WHETHER TO HAVE THE classified_nuclei outptus from overlay_colored_nuclei_contours saved for all patches 
+### GOOD TO PROCESSING THE ENTIRE FOLDER OF POLYGONS (HAVE THAT FROM NARVAL TO HERE IF NEEDED) SINCE NO GPUS USED 
+
+# QA the finally classified nuclei from a patch's AreaInPixels still matches with the original histogram from AreaInPixels from the original polygon csv 
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/nuclei_classify.py \
+#     --task qa_classified_nuclei \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --csv_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_polygon/108001_44001_4000_4000_0.2277_1-features.csv \
+#     --segmentation_output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --patch_size 4000 \

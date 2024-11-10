@@ -59,6 +59,15 @@ class WSISegmentVisualizer:
         mpp_40x = self.reader.convert_resolution_units(40, "mpp")
         print(f"Micrometers per pixel at 40x resolution: {mpp_40x}")
 
+        return mpp_40x['power']
+
+        # output = {'mpp': [40, 40], 'power': 0.2277, 'baseline': 0.0056925000000000005}
+
+        # # Extract the value of 'power'
+        # power_value = output['power']
+        # print(power_value)
+
+
     @staticmethod
     def process_patch(patch_indices, output, patch_size):
         """Calculate min and max for a given patch."""
@@ -473,28 +482,24 @@ class NpyImagePlotter:
             print(f"An error occurred: {e}")
 
 
+    # def read_mpp_wsi(self, wsi_path):
+    #     logger.info(f"Loading WSI: {self.wsi_path}")
+    #     self.reader = WSIReader.open(self.wsi_path)
+    #     # Access the mpp value of the WSI
+    #     # mpp = self.reader.convert_resolution_units(40, "power", "mpp")
+    #     mpp_40x = self.reader.convert_resolution_units(40, "mpp")
+    #     print(f"Micrometers per pixel at 40x resolution: {mpp_40x}")
 
-    # def extract_patch(self):
-    #     """Extract a patch from the WSI based on the provided coordinates and size."""
-    #     # Ensure data is loaded
-    #     if self.data is None:
-    #         self.load_data()
+    #     return mpp_40x
 
-    #     # Extract the patch
-    #     x_start, y_start = self.x_start, self.y_start
-    #     patch_size = self.patch_size
+    def read_mpp_wsi(self, wsi_path):
+        logger.info(f"Loading WSI: {wsi_path}")
+        self.reader = WSIReader.open(wsi_path)
+        # Access the mpp value of the WSI
+        mpp_40x = self.reader.convert_resolution_units(40, "mpp")
+        print(f"Micrometers per pixel at 40x resolution: {mpp_40x}")
 
-    #     print(f"Extracting patch with coordinates: (x_start={x_start}, y_start={y_start}), size={patch_size}")
-
-    #     patch = self.data[y_start:y_start + patch_size, x_start:x_start + patch_size]
-
-    #     print(f"Extracted patch shape: {patch.shape}")
-
-    #     if patch.size == 0:
-    #         raise ValueError("Patch extraction failed or returned empty patch.")
-
-    #     return patch
-
+        return mpp_40x
 
     def extract_patch(self):
         """Extract a patch from the loaded data based on x_start, y_start, and patch_size."""
@@ -980,6 +985,9 @@ def main(args):
         label_dict=label_dict,
         # num_channels=args.num_channels
     )
+    # Obtain the mpp value
+    mpp = visualizer.semantic_plotter.read_mpp_wsi(args.wsi_path)
+
     
     # Execute task based on argument
     if args.task == "load_wsi":
