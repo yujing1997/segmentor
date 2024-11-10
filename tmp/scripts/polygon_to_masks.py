@@ -46,13 +46,6 @@ class NucleiSegmentationMask:
         print(f"Extracted offset: (x={x_offset}, y={y_offset})")
         return (x_offset, y_offset)
 
-    # def load_data(self):
-    #     """
-    #     Load CSV data into a DataFrame.
-    #     """
-    #     self.data = pd.read_csv(self.csv_path)
-    #     print("Data loaded successfully.")
-
     def load_data(self):
         """
         Load CSV data into a DataFrame with optimized data types.
@@ -67,16 +60,6 @@ class NucleiSegmentationMask:
         self.data = pd.read_csv(self.csv_path, dtype=dtypes)
         print("Data loaded successfully with optimized settings.")
         
-
-    # def parse_polygon(self, polygon_str):
-    #     """
-    #     Parse a polygon string into a list of (x, y) coordinates.
-    #     Adjust coordinates based on the offset.
-    #     """
-    #     points = polygon_str.strip("[]").split(":")
-    #     # Adjust each coordinate by subtracting the offset
-    #     return [(int(float(points[i])) - self.offset[0], int(float(points[i+1])) - self.offset[1]) for i in range(0, len(points), 2)]
-
     def parse_polygon(self, polygon_str):
         """
         Parse a polygon string into a list of (x, y) coordinates.
@@ -94,23 +77,6 @@ class NucleiSegmentationMask:
         
         return all_vertices
     
-
-    # def create_mask(self):
-    #     """
-    #     Create a binary mask from the polygons in the CSV data.
-    #     """
-    #     if self.data is None:
-    #         raise ValueError("Data not loaded. Please call load_data() first.")
-        
-    #     for _, row in self.data.iterrows():
-    #         polygon_str = row['Polygon']
-    #         vertices = self.parse_polygon(polygon_str)
-            
-    #         # Only draw polygons that are within the bounds of the mask
-    #         if all(0 <= x < self.patch_size[0] and 0 <= y < self.patch_size[1] for x, y in vertices):
-    #             vertices_np = np.array([vertices], dtype=np.int32)
-    #             cv2.fillPoly(self.mask, vertices_np, color=1)  # Fill with 1 to create binary mask
-    #     print("Mask created successfully.")
 
     def create_mask(self):
         """
@@ -147,12 +113,88 @@ class NucleiSegmentationMask:
         plt.show()
 
     def overlay_contour(self, image, color=(212,175,55)):
+        """
+        Overlays of nuclei segmentation contours on the given image.
+
+        Args:
+            image (numpy.ndarray): The input image on which contours will be overlaid.
+            color (tuple, optional): The color of the contours. Defaults to (212, 175, 55).
+
+        Returns:
+            numpy.ndarray: The image with contours overlaid.
+        """
         contour_overlay = image.copy()
         contours, _ = cv2.findContours(self.mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cv2.drawContours(contour_overlay, contours, -1, color, 2)  # Draw contours with thickness 2
         return contour_overlay
 
 
+
+    def classify_nuclei(self, segmentation_mask, color_map):
+        """
+        Classifies nuclei based on the majority class within each contour.
+
+        Args:
+            segmentation_mask (numpy.ndarray): The semantic segmentation mask.
+            color_map (dict): Dictionary mapping class indices to colors.
+
+        Returns:
+            list: A list of dictionaries containing contour and classification information.
+        """
+        classified_nuclei = []
+        contours, _ = cv2.findContours(self.mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        for contour in contours:
+            # Create a mask for the current contour
+            contour_mask = np.zeros_like(self.mask, dtype=np.uint8)
+            cv2.drawContours(contour_mask, [contour], -1, 1, thickness=cv2.FILLED)
+
+            # Extract the region of the segmentation mask corresponding to the nuclei segmentation contour
+            contour_region = segmentation_mask[contour_mask == 1]
+
+            if len(contour_region) == 0:
+                continue
+
+            # Determine the majority class in the contour region
+            unique, counts = np.unique(contour_region, return_counts=True)
+            majority_class = unique[np.argmax(counts)]
+
+            # Get the color for the majority class
+            color = color_map.get(majority_class, (255, 255, 255))  # Default to white if class not found
+
+            # Store the classified information
+            classified_nuclei.append({
+                'contour': contour,
+                'majority_class': majority_class,
+                'color': color
+            })
+
+        return classified_nuclei
+
+    def overlay_colored_contours(self, image, segmentation_mask, label_dict, color_map, thickness=2):
+        """
+        Overlays nuclei segmentation contours on the given image with colors based on the semantic segmentation mask.
+
+        Args:
+            image (numpy.ndarray): The input image on which contours will be overlaid.
+            segmentation_mask (numpy.ndarray): The semantic segmentation mask.
+            label_dict (dict): Dictionary mapping class indices to class names.
+            color_map (dict): Dictionary mapping class indices to colors.
+            thickness (int, optional): The thickness of the contour lines. Defaults to 2.
+
+        Returns:
+            numpy.ndarray: The image with contours overlaid.
+        """
+        contour_overlay = image.copy()
+        classified_nuclei = self.classify_nuclei(segmentation_mask, color_map)
+
+        for nucleus in classified_nuclei:
+            contour = nucleus['contour']
+            color = nucleus['color']
+            print(f"color is {color}")
+            cv2.drawContours(contour_overlay, [contour], -1, color[1], thickness)
+
+        return contour_overlay
 
     def plot_side_by_side(self, wsi_path, show_overlay=False, save_path=None):
         # Open WSI using TiaToolbox WSIReader at 40x mpp

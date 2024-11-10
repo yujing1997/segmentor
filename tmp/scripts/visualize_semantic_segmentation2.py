@@ -633,6 +633,7 @@ class NpyImagePlotter:
             self.generate_segmentation_mask()
         # Generate label-color dictionary using self.label_dict
         print("Generating label-color dictionary for segmentation classes.")
+        # label_dict is given prior to running this method in def main; First 5 of Set1 matplotlib cmap colors were used
         label_color_dict = {}
         colors = cm.get_cmap("Set1").colors
         for class_name, label in self.label_dict.items():

@@ -38,8 +38,6 @@ class SegmentationVisualizer:
         self.csv_path = csv_path
         self.segmentation_output_path = segmentation_output_path
         self.patch_size = patch_size
-        self.x_start = x_start
-        self.y_start = y_start
         self.label_dict = label_dict or {"Tumor": 0, "Stroma": 1, "Inflammatory": 2, "Necrosis": 3, "Others": 4}
 
         # Initialize Nuclei and Semantic Plotter Objects
@@ -47,11 +45,18 @@ class SegmentationVisualizer:
             csv_path, 
             patch_size=(patch_size, patch_size)
         )
+
+        # Determine x_start, y_start was given: flexible, if given, then that's it; if not, extract it from the csv polygon filename
+        if x_start is None or y_start is None:
+            x_start, y_start = self.nuclei_mask.offset
+        self.x_start = x_start
+        self.y_start = y_start
+
         self.semantic_plotter = NpyImagePlotter(
             file_path=segmentation_output_path,
             label_dict=self.label_dict,
-            x_start=x_start,
-            y_start=y_start,
+            x_start=self.x_start,
+            y_start=self.y_start,
             patch_size=patch_size,
             transpose_segmask=transpose_segmask  # Pass transpose option here
         )
@@ -177,8 +182,6 @@ class SegmentationVisualizer:
         plt.show()
 
 
-
-
     def color_nuclei_contours(wsi_patch, nuclei_contours, segmentation_mask, label_color_dict, show_legend=True):
         """
         Change the color of nuclei contours based on the corresponding semantic segmentation class and display a legend.
@@ -240,8 +243,8 @@ class SegmentationVisualizer:
         return final_overlay
 
 
-    def overlay_colored_nuclei_contours(self, wsi_path, save_path=None):
 
+    def overlay_colored_nuclei_contours(self, wsi_path, save_path=None):
         """
         Overlay the H&E patch with nuclei contours and the semantic segmentation mask.
 
@@ -275,7 +278,7 @@ class SegmentationVisualizer:
         # Display the final overlay with legend
         plt.figure(figsize=(10, 10))
         plt.imshow(overlay_image)
-        plt.title("Overlay of H&E with Class-Colored Nuclei Contours", fontsize=32)
+        plt.title("Overlay of H&E with Class-Colored Nuclei Contours", fontsize=20)
         plt.axis("off")
 
         # Add a legend for the segmentation classes
@@ -287,11 +290,11 @@ class SegmentationVisualizer:
 
         # Save the figure if a path is specified
         if save_path:
+            # plt.savefig(save_path, bbox_inches="tight", dpi=1000)
             plt.savefig(save_path, bbox_inches="tight", dpi=600)
             print(f"Overlay image saved to {save_path}")
 
         plt.show()
-
 
     def _extract_he_patch(self):
         """
@@ -308,6 +311,7 @@ def main(args):
         wsi_path=args.wsi_path,
         csv_path=args.csv_path,
         segmentation_output_path=args.segmentation_output_path,
+        # commented out x_start, y_start since they are given in the init method (directly from the extraction of csv filename)
         x_start=args.x_start,
         y_start=args.y_start,
         patch_size=args.patch_size,
@@ -334,8 +338,8 @@ if __name__ == "__main__":
     parser.add_argument("--wsi_path", type=str, required=True, help="Path to the WSI file")
     parser.add_argument("--csv_path", type=str, required=True, help="Path to the CSV file for nuclei segmentation")
     parser.add_argument("--segmentation_output_path", type=str, required=True, help="Path to the .npy file for semantic segmentation")
-    parser.add_argument("--x_start", type=int, required=True, help="Starting x-coordinate of the patch")
-    parser.add_argument("--y_start", type=int, required=True, help="Starting y-coordinate of the patch")
+    parser.add_argument("--x_start", type=int, help="Starting x-coordinate of the patch")
+    parser.add_argument("--y_start", type=int, help="Starting y-coordinate of the patch")
     parser.add_argument("--patch_size", type=int, default=4000, help="Size of the patch to extract")
     parser.add_argument("--save_path", type=str, help="Path to save the plot (for single plot tasks)")
     parser.add_argument("--save_dir", type=str, help="Directory to save individual images when using save_individual")
@@ -407,13 +411,13 @@ if __name__ == "__main__":
 #                           --save_path /path/to/save_overlay.png
 
 # 3. class colored nuclei contour overlap with the original H&E patch
+
 # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/nuclei_classify.py \
 #     --task overlay_colored_nuclei_contours \
 #     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
 #     --csv_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_polygon/108001_44001_4000_4000_0.2277_1-features.csv \
 #     --segmentation_output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
-#     --x_start 108001 \
-#     --y_start 44001 \
 #     --patch_size 4000 \
 #     --save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/patch_108001_44001_4000/108001_44001_4000_overlay_colored_nuclei_contours.png \
 #     --transpose_segmask
+
