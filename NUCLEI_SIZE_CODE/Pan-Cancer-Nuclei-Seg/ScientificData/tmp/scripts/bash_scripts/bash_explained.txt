@@ -1,0 +1,87 @@
+From this 
+`#!/bin/bash
+#SBATCH --job-name=wsi_segmentation
+#SBATCH --output=/home/yujingz/scratch/NUCLEI_SIZE_CODE/Pan-Cancer-Nuclei-Seg/ScientificData/tmp/scripts/output_logs/segmentation_log_%A_%a.out
+#SBATCH --error=/home/yujingz/scratch/NUCLEI_SIZE_CODE/Pan-Cancer-Nuclei-Seg/ScientificData/tmp/scripts/output_logs/segmentation_log_%A_%a.err
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=48
+#SBATCH --gres=gpu:1             # Request any available GPU
+#SBATCH --mem=64G
+#SBATCH --time=05:00:00
+#SBATCH --array=1-$(($(wc -l < /home/yujingz/scratch/NUCLEI_SIZE_CODE/Pan-Cancer-Nuclei-Seg/ScientificData/filemaps/tcga_cesc/run_partition/run_Narval_YZ_filemap.tsv) - 1))
+`
+
+#SBATCH --ntasks=1
+Definition: ntasks=1 means that each job (including each array task) will execute a single task.
+Effect in Job Array: Each array job is treated independently, so every array job (i.e., each unique SLURM_ARRAY_TASK_ID) will have 1 task, making it effectively a single-threaded job at the SLURM task level. However, you can still use multiple CPU cores within this task, specified by cpus-per-task.
+#SBATCH --cpus-per-task=48
+Definition: cpus-per-task=48 allocates 48 CPU cores to each task.
+Effect in Job Array: Every individual array job (each SLURM_ARRAY_TASK_ID) will be allocated 48 CPU cores. These cores are available within the single SLURM task, meaning that you can use them all concurrently, which is ideal for parallel processing within that job (e.g., data loading with multiple threads).
+Usage: If your Python script or application is multi-threaded or has parallel components (like data loaders in PyTorch), it can make use of all 48 CPU cores for better performance.
+#SBATCH --mem=64G
+Definition: This allocates 128 GB of memory to each task.
+Effect in Job Array: Each job in the array gets its own 128 GB of memory to work with, independent of other array jobs.
+Usage: If your job processes large data or models, this ensures each job has sufficient memory for its operations.
+#SBATCH --nodes=1
+Definition: Specifies that each task will run on a single node.
+Effect in Job Array: Each array job will be assigned a separate node, if available, and will use resources on that node (48 CPUs, 128 GB memory, and 1 GPU). If nodes are limited, the scheduler may place multiple tasks on a single node, but they’ll still each get the specified resources.
+#SBATCH --gres=gpu:1
+Definition: This requests one GPU for each task.
+Effect in Job Array: Each job in the array will have access to one GPU, allowing each task to independently leverage GPU processing.
+
+That was NOT wise above! 
+Job Array (#SBATCH --array=1-1000%20):
+
+This specifies an array of 1000 tasks, but with a limit of 20 simultaneous tasks.
+Each task in the array operates independently, running one instance of the script for each sample in the SAMPLE_SHEET.
+Resource Allocation per Task:
+
+Each individual task in the array (SLURM_ARRAY_TASK_ID) requests 1 GPU, 48 CPUs, and 64 GB of RAM.
+Resources are not shared between tasks: each task is treated as a separate job, meaning each task will receive its own allocation of the requested resources if available.
+Ensuring Correct Number of Array Jobs Matches the Sample Sheet
+
+Your script calculates the number of tasks in the sample sheet with this line:
+bash
+Copy code
+N_TASKS=$(( $(wc -l < /home/yujingz/scratch/NUCLEI_SIZE_CODE/Pan-Cancer-Nuclei-Seg/ScientificData/filemaps/tcga_cesc/run_partition/run_Narval_YZ_filemap.tsv) - 1 ))
+However, your current job array (#SBATCH --array=1-1000%20) creates up to 1000 tasks, which will exceed the number of samples if there are fewer rows in the sample sheet.
+If your sample sheet has fewer than 1000 rows, any tasks with SLURM_ARRAY_TASK_ID greater than N_TASKS will exit immediately due to the check:
+bash
+Copy code
+if [ $SLURM_ARRAY_TASK_ID -gt $N_TASKS ]; then
+    echo "This task ID exceeds the number of files. Exiting."
+    exit 0
+fi
+
+Adjusting the Job Array to Match the Exact Number of Samples in the Sample Sheet
+To match the job array count to the number of samples exactly, you can modify the #SBATCH --array directive dynamically based on the sample sheet. Here’s how:
+
+Calculate the Number of Tasks Dynamically:
+
+Use the sample sheet row count directly to define the array range.
+Set --array=1-N_TASKS%20 in your submission script to create one task per sample in the sheet.
+Example Revised Script
+
+Modify the SBATCH line to dynamically set the job array size:
+
+bash
+Copy code
+#!/bin/bash
+#SBATCH --job-name=wsi_segmentation
+#SBATCH --output=/home/yujingz/scratch/NUCLEI_SIZE_CODE/Pan-Cancer-Nuclei-Seg/ScientificData/tmp/scripts/output_logs/segmentation_log_%A_%a.out
+#SBATCH --error=/home/yujingz/scratch/NUCLEI_SIZE_CODE/Pan-Cancer-Nuclei-Seg/ScientificData/tmp/scripts/output_logs/segmentation_log_%A_%a.err
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=48
+#SBATCH --gres=gpu:1
+#SBATCH --mem=64G
+#SBATCH --time=05:00:00
+# Calculate N_TASKS based on the sample sheet row count (excluding header)
+N_TASKS=$(( $(wc -l < /home/yujingz/scratch/NUCLEI_SIZE_CODE/Pan-Cancer-Nuclei-Seg/ScientificData/filemaps/tcga_cesc/run_partition/run_Narval_YZ_filemap.tsv) - 1 ))
+# Request the exact number of array tasks with a 20-task concurrency limit
+#SBATCH --array=1-$N_TASKS%20
+This way:
+
+--array=1-$N_TASKS%20 ensures that only the required number of tasks (one per WSI) are launched.
+%20 limits the number of tasks running simultaneously to 20, helping with resource contention and scheduling efficiency.
