@@ -11,7 +11,7 @@ import os
 import argparse
 import matplotlib.pyplot as plt
 from visualize_semantic_segmentation2 import WSISegmentVisualizer, NpyImagePlotter
-from polygon_to_masks import NucleiSegmentationMask
+from polygon_to_masks import NucleiSegmentationMask, QA_NucleiMaskAreaAnalysis
 from tiatoolbox.wsicore.wsireader import WSIReader
 from matplotlib.patches import Patch
 import numpy as np
@@ -45,6 +45,18 @@ class SegmentationVisualizer:
             csv_path, 
             patch_size=(patch_size, patch_size)
         )
+        # QA AreaInPixels from the csv file 
+        self.qa_nuclei_mask = QA_NucleiMaskAreaAnalysis(
+            csv_path=self.csv_path,
+            mask_path=None,
+            output_path=self.segmentation_output_path,
+            # offset=None,
+            # original_data=None,
+            # binary_mask = None,
+            # areas_from_mask = [],
+            # areas_from_csv = []
+      
+        )   
 
         # Determine x_start, y_start was given: flexible, if given, then that's it; if not, extract it from the csv polygon filename
         if x_start is None or y_start is None:
@@ -276,6 +288,10 @@ class SegmentationVisualizer:
         print("Nuclei contours overlay created.")
         print(f"Data type of overlay image: {type(overlay_image)}")
         print(f"Nuclei Contours Overlay image shape: {overlay_image.shape}")
+        print(f"Classified nuclei data type: {type(classified_nuclei)}")
+        # print(f"Classified nuclei['AreaInPixels']: {classified_nuclei['AreaInPixels']}")
+
+
 
         # Display the final overlay with legend
         plt.figure(figsize=(10, 10))
@@ -297,6 +313,9 @@ class SegmentationVisualizer:
             print(f"Overlay image saved to {save_path}")
 
         plt.show()
+        # for nucleus in classified_nuclei:
+        #     print(f"AreaInPixels: {nucleus['AreaInPixels']}")
+
         print(f"This patch has {nuclei_num_per_patch} nuclei.")
         return overlay_image, classified_nuclei, nuclei_num_per_patch
 
@@ -386,14 +405,24 @@ def main(args):
         visualizer.overlay_colored_nuclei_contours(wsi_path=args.wsi_path, save_path=args.save_path, mpp=visualizer.mpp)
 
     elif args.task == "qa_classified_nuclei":
-        visualizer.nuclei_mask.load_data()
-        visualizer.nuclei_mask.create_mask()
-        visualizer.nuclei_mask.calculate_areas_from_csv()
-        segmentation_mask = np.load(args.segmentation_output_path)  # Load the segmentation mask
-        color_map = {0: (255, 0, 0), 1: (0, 255, 0), 2: (0, 0, 255)}  # Example color map
-        mpp = 0.2277  # Example mpp value
-        visualizer.nuclei_mask.output_path = args.output_path  # Set the output path for the histogram
-        visualizer.nuclei_mask.run_analysis(segmentation_mask, color_map, mpp)
+
+        qa = visualizer.qa_nuclei_mask
+        # Example usage
+        _, classified_nuclei, nuclei_num_per_patch = visualizer.overlay_colored_nuclei_contours(wsi_path=args.wsi_path, save_path=args.save_path, mpp=visualizer.mpp)
+
+        # Obtain 'AreaInPixels' from classified_nuclei regardless of class
+        nuclei_classify_area = [nucleus['AreaInPixels'] for nucleus in classified_nuclei]
+        print(f"Total number of nuclei in this patch: {nuclei_num_per_patch}")
+
+        # The original csv file with the AreaInPixels
+        original_nuclei_csv = visualizer.qa_nuclei_mask.load_data()
+        nuclei_original_area = original_nuclei_csv['AreaInPixels']
+        # print(f"nuclei_original_area: {nuclei_original_area}")
+
+        # Plot the two distributions as overlapping histograms
+        output_path = args.save_path
+        # output_path = "/Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/qa_nuclei_areainpixels_histogram.png"  # Specify the path to save the histogram
+        qa.plot_overlapping_histogram_classified_nuclei(nuclei_classify_area, nuclei_original_area, output_path)
 
 
 if __name__ == "__main__":
@@ -515,7 +544,7 @@ if __name__ == "__main__":
 #     --csv_path /Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs.tar.gz/cesc_polygon/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/136001_4001_4000_4000_0.2501_1-features.csv \
 #     --segmentation_output_path /Data/Yujing/Segment/tmp/tcga_cesc_semantic_mask/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
 #     --patch_size 4000 \
-#     --save_path /Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/136001_4001_4000_overlay_colored_nuclei_contours.png \
+#     --save_path /Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/136001_4001_4000_overlay_colored_nuclei_contours2.png \
 #     --transpose_segmask
 
 # LOOPING  THROUGH THIS ENTIRE CSV FOLDER --> THEN FIGURE OUT A WAY FOR DOING THIS IN ZIPPED FOLDER 
@@ -533,10 +562,24 @@ if __name__ == "__main__":
 # THEN RUN THIS ON THE ENTIRE FOLDER OF POLYGONS FOR THIS WSI, OPTIMIZE SPEED
 
 # THEN TRANSFER THIS ONTO NARVAL 
+# Only calculate, no save_path needed, --transpose_segmask is needed!
 
 # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/nuclei_classify.py \
 #     --task qa_classified_nuclei \
-#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
-#     --csv_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_polygon/108001_44001_4000_4000_0.2277_1-features.csv \
-#     --segmentation_output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
-#     --patch_size 4000 \
+#     --wsi_path /Data/Yujing/Segment/tmp/tcga_cesc_svs/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs \
+#     --csv_path /Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs.tar.gz/cesc_polygon/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/136001_4001_4000_4000_0.2501_1-features.csv \
+#     --segmentation_output_path /Data/Yujing/Segment/tmp/tcga_cesc_semantic_mask/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --transpose_segmask \
+#     --save_path /Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/136001_4001_4000_4000_qa_nuclei_areainpixels_histogram.png
+
+
+# Try another patch
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/nuclei_classify.py \
+#     --task qa_classified_nuclei \
+#     --wsi_path /Data/Yujing/Segment/tmp/tcga_cesc_svs/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs \
+#     --csv_path /Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs.tar.gz/cesc_polygon/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/92001_8001_4000_4000_0.2501_1-features.csv \
+#     --segmentation_output_path /Data/Yujing/Segment/tmp/tcga_cesc_semantic_mask/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --transpose_segmask \
+#     --save_path /Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/92001_8001_4000_4000_qa_nuclei_areainpixels_histogram.png
+
+

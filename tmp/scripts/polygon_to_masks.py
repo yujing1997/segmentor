@@ -208,6 +208,7 @@ class NucleiSegmentationMask:
                 'AreaInSquareMicrons': area_in_square_microns,
                 'mpp': mpp_value    
             })
+            # print(f"classifid_nuclei: {classified_nuclei}")
 
         return classified_nuclei, nuclei_num_per_patch
 
@@ -304,8 +305,13 @@ class QA_NucleiMaskAreaAnalysis:
 
     def load_data(self):
         self.original_data = pd.read_csv(self.csv_path)
-        self.binary_mask = np.array(Image.open(self.mask_path).convert('L')) // 255
+        if self.binary_mask is None:
+            pass
+        else:
+            self.binary_mask = np.array(Image.open(self.mask_path).convert('L')) // 255
         print("Data loaded successfully.")
+        
+        return self.original_data
 
     def parse_polygon(self, polygon_str):
         points = polygon_str.strip("[]").split(":")
@@ -346,6 +352,28 @@ class QA_NucleiMaskAreaAnalysis:
         print(f"Mean Area from Binary Mask: {mean_area_mask:.2f}")
         print(f"Mean Area from CSV: {mean_area_csv:.2f}")
         print(f"Difference in Mean Area: {abs(mean_area_mask - mean_area_csv):.2f} pixels")
+
+    def plot_overlapping_histogram_classified_nuclei(self,nuclei_classify_area, nuclei_original_area, output_path):
+        mean_area_classify = np.mean(nuclei_classify_area)
+        mean_area_original = np.mean(nuclei_original_area)
+        
+        plt.figure(figsize=(12, 8))
+        plt.hist(nuclei_classify_area, bins=100, range=(0, 5000), alpha=0.5, label=f"Classified Nuclei (Mean Area: {mean_area_classify:.2f})", color='blue')
+        plt.hist(nuclei_original_area, bins=100, range=(0, 5000), alpha=0.5, label=f"Original CSV Data (Mean Area: {mean_area_original:.2f})", color='green')
+        
+        plt.xlabel("Area in Pixels", fontsize=28)
+        plt.ylabel("Frequency", fontsize=28)
+        plt.title("Comparison of AreaInPixels Distributions", fontsize=32)
+        plt.legend(fontsize=28)
+        plt.tight_layout()
+        plt.savefig(output_path)
+        plt.show()
+        
+        print(f"Histogram saved at {output_path}")
+        print(f"Mean Area from Classified Nuclei: {mean_area_classify:.2f}")
+        print(f"Mean Area from Original CSV: {mean_area_original:.2f}")
+        print(f"Difference in Mean Area: {abs(mean_area_classify - mean_area_original):.2f} AreaInPixels")
+
 
     def run_analysis(self):
         self.load_data()
