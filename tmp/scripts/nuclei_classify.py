@@ -250,7 +250,7 @@ class SegmentationVisualizer:
         Overlay the H&E patch with nuclei contours and the semantic segmentation mask.
 
         Args:
-            wsi_path (str): Path to the WSI file.
+            wsi_path (str): Path to the WSI fdile.
             save_path (str, optional): Path to save the combined overlay image. Default is None.
         """
         # Generate the segmentation mask using NpyImagePlotter
@@ -488,10 +488,51 @@ if __name__ == "__main__":
 #     --save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/patch_108001_44001_4000/108001_44001_4000_overlay_colored_nuclei_contours.png \
 #     --transpose_segmask
 
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/nuclei_classify.py \
+#     --task overlay_colored_nuclei_contours \
+#     --wsi_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/TCGA-2F-A9KO-01Z-00-DX1.195576CF-B739-4BD9-B15B-4A70AE287D3E.svs \
+#     --csv_path /home/yujing/dockhome/Multimodality/Segment/tmp/blca_polygon/108001_44001_4000_4000_0.2277_1-features.csv \
+#     --segmentation_output_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --patch_size 4000 \
+#     --save_path /Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/visualizations/patch_108001_44001_4000/108001_44001_4000_overlay_colored_nuclei_contours2.png \
+#     --transpose_segmask
+
+# Try on a TCGA-CESC case 
+# /Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/nuclei_classify.py \
+#     --task overlay_colored_nuclei_contours \
+#     --wsi_path /Data/Yujing/Segment/tmp/tcga_cesc_svs/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs \
+#     --csv_path /Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs.tar.gz/cesc_polygon/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/92001_8001_4000_4000_0.2501_1-features.csv \
+#     --segmentation_output_path /Data/Yujing/Segment/tmp/tcga_cesc_semantic_mask/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --patch_size 4000 \
+#     --save_path /Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/92001_8001_4000_overlay_colored_nuclei_contours.png \
+#     --transpose_segmask
+
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/nuclei_classify.py \
+#     --task overlay_colored_nuclei_contours \
+#     --wsi_path /Data/Yujing/Segment/tmp/tcga_cesc_svs/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs \
+#     --csv_path /Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs.tar.gz/cesc_polygon/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/136001_4001_4000_4000_0.2501_1-features.csv \
+#     --segmentation_output_path /Data/Yujing/Segment/tmp/tcga_cesc_semantic_mask/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --patch_size 4000 \
+#     --save_path /Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/136001_4001_4000_overlay_colored_nuclei_contours.png \
+#     --transpose_segmask
+
+# LOOPING  THROUGH THIS ENTIRE CSV FOLDER --> THEN FIGURE OUT A WAY FOR DOING THIS IN ZIPPED FOLDER 
+# KILL THE SAVED ON E DRIVE PROCESS, JUST SAVE ON ./DATA, SINCE WRITING ON E DRIVE IS SLOWING THINGS DOWN
+# BUT CHECK HOW MUCH SPACE IS LEFT ON THE ./DATA, NEED TO TRANSFER TO BELUGA FROM TIME TO TIME 
+# LAUNCH THE NARVAL, BELUGA, AND CEDAR  
+
+
+# I'M HERE!!!
 ## THINK ABOUT WHETHER TO HAVE THE classified_nuclei outptus from overlay_colored_nuclei_contours saved for all patches 
 ### GOOD TO PROCESSING THE ENTIRE FOLDER OF POLYGONS (HAVE THAT FROM NARVAL TO HERE IF NEEDED) SINCE NO GPUS USED 
 
 # QA the finally classified nuclei from a patch's AreaInPixels still matches with the original histogram from AreaInPixels from the original polygon csv 
+
+# THEN RUN THIS ON THE ENTIRE FOLDER OF POLYGONS FOR THIS WSI, OPTIMIZE SPEED
+
+# THEN TRANSFER THIS ONTO NARVAL 
 
 # python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/nuclei_classify.py \
 #     --task qa_classified_nuclei \

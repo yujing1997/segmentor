@@ -1572,6 +1572,18 @@ if __name__ == "__main__":
 #     --show_side_by_side \
 #     --transpose_segmask
 
+# Now try a TCGA-CESC image
+# python /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/visualize_semantic_segmentation.py \
+#     --task segmentation_overlay \
+#     --npy_file_path /Data/Yujing/Segment/tmp/tcga_cesc_semantic_mask/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/wsi_segmentation_results2_0.2277mpp_40x/0.raw.0.npy \
+#     --wsi_path /Data/Yujing/Segment/tmp/tcga_cesc_svs/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs \
+#     --x_start 104001 \
+#     --y_start 12001 \
+#     --patch_size 10000 \
+#     --overlay_save_path /Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/wsi_semanticseg_sidebyside_image_104001_12001_10000_transposedmask.png \
+#     --show_side_by_side \
+#     --transpose_segmask
+
 # ISSUE: it seems like all the glass/white space in the backgroud were automatically assigned to the "Tumor" class in red. This is not good!!.
 # Need to fix this next!!!!
 

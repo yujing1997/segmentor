@@ -43,8 +43,8 @@ wsi_path = '/home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f
 # mpp = micrometers per pixel 
 bcc_segmentor = SemanticSegmentor(
     pretrained_model="fcn_resnet50_unet-bcss",
-    num_loader_workers=16, # Proton GPU has 48 cores, default is 4 
-    batch_size=32, # defaut 4, when Proton on full capacity, 32 or 64 is still fine
+    num_loader_workers=64, # Proton GPU has 48 cores, default is 4 
+    batch_size=64, # defaut 4, when Proton on full capacity, 32 or 64 is still fine
     auto_generate_mask=True,  # Enable tissue mask generation
 )
 
@@ -77,7 +77,12 @@ bcc_wsi_ioconfig = IOSegmentorConfig(
 
 # save_dir = "/home/yujing/dockhome/Multimodality/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x"
 # Save data on the ./Data/Yujing directory (has 4TB of space)
-save_dir = "/Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x"
+
+# ALREADY SAVED!!
+# save_dir = "/Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x"
+
+save_dir = "/Data/Yujing/Segment/tmp/blca_svs/30e4624b-6f48-429b-b1d9-6a6bc5c82c5e/wsi_segmentation_results2_0.2277mpp_40x_2"
+
 
 if os.path.exists(save_dir):
     shutil.rmtree(save_dir)  # Remove the directory and all its contents
