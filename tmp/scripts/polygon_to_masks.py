@@ -212,6 +212,8 @@ class NucleiSegmentationMask:
 
         return classified_nuclei, nuclei_num_per_patch
 
+
+
     def calculate_areas_from_csv(self):
         """
         Extracts the AreaInPixels from the CSV file.
@@ -326,6 +328,7 @@ class QA_NucleiMaskAreaAnalysis:
             cv2.fillPoly(nucleus_mask, [vertices_np], 1)
             area_in_mask = np.sum(self.binary_mask * nucleus_mask)
             self.areas_from_mask.append(area_in_mask)
+
         print("Areas from binary mask calculated successfully.")
         return self.areas_from_mask
         

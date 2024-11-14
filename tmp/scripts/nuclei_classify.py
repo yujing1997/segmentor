@@ -424,6 +424,10 @@ def main(args):
         # output_path = "/Data/Yujing/Segment/tmp/tcga_cesc_visualizations/6edad00e-0e5b-42bc-a09d-ea81b1011c20/TCGA-C5-A1MI-01Z-00-DX1.93D2D53E-C990-4CEE-AF61-A841A3798A74.svs/qa_nuclei_areainpixels_histogram.png"  # Specify the path to save the histogram
         qa.plot_overlapping_histogram_classified_nuclei(nuclei_classify_area, nuclei_original_area, output_path)
 
+    # I'M HERE!!!!!
+    # classified_nuclei need to be saved per patch → per slide (parallel processing through the csv folder of a TCGA file) → then make it work such that it can work without unzipping the polygon csv folder 
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Segmentation Visualization Script")
