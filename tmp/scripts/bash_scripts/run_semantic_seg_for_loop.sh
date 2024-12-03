@@ -8,6 +8,7 @@
 TASK="predict_wsi"
 SAMPLE_SHEET="/Data/Yujing/Segment/tmp/tcga_cesc_manifest/run_partition/run_Proton_filemap.tsv"
 PARENT_WSI_DIR="/Data/Yujing/Segment/tmp/tcga_cesc_svs"
+# PARENT_SAVE_DIR="/Data/Yujing/Segment/tmp/tcga_cesc_semantic_mask"
 PARENT_SAVE_DIR="/Data/Yujing/Segment/tmp/tcga_cesc_semantic_mask_qa"
 ON_GPU="--on_gpu"
 LOG_FILE="/Data/Yujing/Segment/tmp/tcga_cesc_manifest/output_logs/segmentation_log_$(date +%Y%m%d_%H%M%S).log"

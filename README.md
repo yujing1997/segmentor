@@ -53,3 +53,24 @@ sshfs yujingz@narval.compute_canada.ca:/home/yujingz/scratch/NUCLEI_SIZE_CODE/Pa
     - shows this partitioning of the task
     - Proton GPU (local), Narval_YZ, Narval_HG, Cedar_YZ, Cedar_HG, Beluga_YZ, Beluga_HG
     - Estimate how long each one takes 
+    - see the Narval README.md for more details 
+
+## Ran parts of tcga_cesc on Proton, the rest on Narval 
+    - /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/bash_scripts/run_semantic_seg_for_loop.sh
+        - ran for filemap: /Data/Yujing/Segment/tmp/tcga_cesc_manifest/run_partition/run_Proton_filemap.tsv
+    - /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/bash_scripts/run_semantic_seg_for_loop2.sh
+        - ran for filemap: /Data/Yujing/Segment/tmp/tcga_cesc_manifest/run_partition/run_to_be_rerun.tsv
+
+# extract or classify nuclei from semantic segmentation of WSI 
+-  /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/bash_scripts/nuclei_classify_extract_job_arrays_narval.sh
+    - ran on Narval for the segmented WSIs ran and stored on the rrg project folder there. 
+    - It is a job array therefore submitted by sbatch ..script.sh. It creates x number of tasks where each corresponds to one row of the SAMPLE_SHEET or the filemap defined in the script 
+    - Here on Proton, we can't create job arrays, so will need to modify them into for loops where each loop processes a row from the given SAMPLE_SHEET
+>>./tmp/scripts/bash_scripts/nuclei_classify_extract_for_loop.sh
+        corresponds to /Data/Yujing/Segment/tmp/tcga_cesc_manifest/run_partition/run_Proton_filemap.tsv
+        whose semantic segmentation was run from /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/bash_scripts/run_semantic_seg_for_loop.sh
+
+>>./tmp/scripts/bash_scripts/nuclei_classify_extract_for_loop2.sh
+        corresponds to /Data/Yujing/Segment/tmp/tcga_cesc_manifest/run_partition/run_to_be_rerun.tsv
+        whose semantic segmentation was run from /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/bash_scripts/run_semantic_seg_for_loop2.sh
+

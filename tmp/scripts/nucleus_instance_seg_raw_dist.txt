@@ -1,0 +1,8 @@
+|2024-12-02|00:34:55.439| [INFO] Note: NumExpr detected 48 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 16.
+|2024-12-02|00:34:55.439| [INFO] NumExpr defaulting to 16 threads.
+|2024-12-02|00:35:04.940| [INFO] Number of detected nuclei: 100844
+|2024-12-02|00:35:04.950| [INFO] Nucleus prediction structure for nucleus ID: 03a9ceb8a01b4574be1768d259a70474
+|2024-12-02|00:35:04.951| [INFO] Keys in the output dictionary: [box, centroid, contour, prob, type]
+|2024-12-02|00:35:04.951| [INFO] Bounding box: (22169, 33405, 22204, 33431)
+|2024-12-02|00:35:04.951| [INFO] Centroid: (22185, 33418)
+|2024-12-02|00:35:04.959| [INFO] WSI original dimensions: (82560, 79510)

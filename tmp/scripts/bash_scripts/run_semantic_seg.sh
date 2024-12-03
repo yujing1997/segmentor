@@ -1,7 +1,11 @@
 #!/bin/bash
 
-# THIS BASH SCRIPT PATHS IS FOR THE PROTON GPUS (LOCAL)
+# Decapricated: This script is not used anymore.
 
+# THIS BASH SCRIPT PATHS IS FOR THE PROTON GPUS (LOCAL)
+# Issue: works well! TCGA-CESC WSIs seem to be done by 1-8 minutes per WSI! 
+# this uses a while-loop to process each WSI in the sample sheet
+# So it somehow looped the entire list four times!!! 
 
 # Define paths and arguments
 TASK="predict_wsi"

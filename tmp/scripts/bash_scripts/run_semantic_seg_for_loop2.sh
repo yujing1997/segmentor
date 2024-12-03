@@ -9,6 +9,8 @@ ON_GPU="--on_gpu"
 LOG_FILE="/Data/Yujing/Segment/tmp/tcga_cesc_manifest/output_logs/segmentation_log_$(date +%Y%m%d_%H%M%S).log"
 NUM_ITERATIONS=0  # Set to 0 to iterate over all rows, or set to a specific number to limit iterations
 
+# conda activate segment2
+
 # This bash script runs some subsets of WSI given a SAMPLE_SHEET, you'd have to make sure the wsi_path actually exists though from the paths build from the file id and file name of the SAMPLE_SHEET
 # Here I did something quick and dirty where I manually separated the rows whose wsi_paths exists and those who didn't and need to be rerun (since the tcga-cesc was still downloading...)
 
