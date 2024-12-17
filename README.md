@@ -73,4 +73,11 @@ sshfs yujingz@narval.compute_canada.ca:/home/yujingz/scratch/NUCLEI_SIZE_CODE/Pa
 >>./tmp/scripts/bash_scripts/nuclei_classify_extract_for_loop2.sh
         corresponds to /Data/Yujing/Segment/tmp/tcga_cesc_manifest/run_partition/run_to_be_rerun.tsv
         whose semantic segmentation was run from /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/bash_scripts/run_semantic_seg_for_loop2.sh
+### Manuscript Methodology Figure visuals
+Note: the following scripts consist of the making of each component of the manuscript methodology figure to be reproducible. With the semantic_seg step, we first randomly generated 5 patches (experiemnts) of the semantic segmentation of 4k by 4k patches of a WSI that matches with the cesc_polygon csv file names. We visually selected representable ones including a variety type of tissue classes and coverage (did not select patches with lots of white space background for exapmle). Each bash script has the option to do the random patch selection visualization or with a defined X_START, Y_START, and PATCH_SIZE manually. Once the ones to show in the manuscript were picked, they were correspondingly generated for the nuclei_classify_overlay, and the nuclei binary segmentation. 
+
+- semantic_seg: /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/bash_scripts/Manuscript_Visualizations/semantic_seg_visual_progressbar.sh
+- semantic_seg + cesc_polygon nuclei binary seg nuclei_classify_overlay: /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/bash_scripts/Manuscript_Visualizations/nuclei_overlay_visual.sh
+- nuclei binary segmentation mask: based on /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/polygon_to_masks.py
+
 
