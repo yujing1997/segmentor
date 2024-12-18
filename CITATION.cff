@@ -1,1 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software or research work, please consider citing it as below."
+authors:
+- family-names: "Zou"
+  given-names: "Yujing"
+- family-names: "Glickman"
+  given-names: "Harry"
+- family-names: "Pelmus"
+  given-names: "Manuela"
+- family-names: "Maleki"
+  given-names: "Farhad"
+- family-names: "Bahoric"
+  given-names: "Boris"
+- family-names: "Lecavalier-Barsoum"
+  given-names: "Magali"
+- family-names: "Enger"
+  given-names: "Shirin A."
+title: "Tumor nuclear size as a biomarker for post-radiotherapy progression and survival in gynecological malignancies: development of a multivariable prediction model"
+version: 1.0.0
+date-released: 2024-12-17
+doi: "XXX"
+url: "https://github.com/engerlab/segmentor}"
 
