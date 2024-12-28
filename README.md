@@ -1,6 +1,4 @@
-# Tumor nuclear size as a biomarker for post-radiotherapy
-progression and survival in gynecological malignancies:
-development of a multivariable prediction model
+# Tumor nuclear size as a biomarker for post-radiotherapy progression and survival in gynecological malignancies: development of a multivariable prediction model
 
 
 
