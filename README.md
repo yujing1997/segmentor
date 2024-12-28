@@ -1,6 +1,6 @@
 # Tumor nuclear size as a biomarker for post-radiotherapy progression and survival in gynecological malignancies: development of a multivariable prediction model
 
-![Method Figure](docs/images/MethodFigure1.png)
+![Method Figure](MethodFigure1.png)
 
 
 # Semantic Segmentation (TiaToolBox) 
