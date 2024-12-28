@@ -1,6 +1,10 @@
-# TiaToolbox 
+# Tumor nuclear size as a biomarker for post-radiotherapy
+progression and survival in gynecological malignancies:
+development of a multivariable prediction model
 
-# Semantic Segmentation 
+
+
+# Semantic Segmentation (TiaToolBox) 
 
 # How to install gdc-client for data transfer from TCGA data 
 
