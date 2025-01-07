@@ -84,4 +84,14 @@ Note: the following scripts consist of the making of each component of the manus
 - semantic_seg + cesc_polygon nuclei binary seg nuclei_classify_overlay: /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/bash_scripts/Manuscript_Visualizations/nuclei_overlay_visual.sh
 - nuclei binary segmentation mask: based on /home/yujing/dockhome/Multimodality/Segment/tmp/scripts/polygon_to_masks.py
 
+```bibtex
+@software{Zou_Tumor_nuclear_size_2024,
+author = {Zou, Yujing and Glickman, Harry and Pelmus, Manuela and Maleki, Farhad and Bahoric, Boris and Lecavalier-Barsoum, Magali and Enger, Shirin A.},
+doi = {XXX},
+month = dec,
+title = {{Tumor nuclear size as a biomarker for post-radiotherapy progression and survival in gynecological malignancies: development of a multivariable prediction model}},
+url = {https://github.com/engerlab/segmentor}},
+version = {1.0.0},
+year = {2024}
+}
 
