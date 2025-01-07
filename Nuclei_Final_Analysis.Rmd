@@ -1,0 +1,1297 @@
+---
+title: "Nuclei_Size_Analysis"
+output: pdf_document
+date: "2024-10-24"
+---
+#setup
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "C:\\Users\\harry\\OneDrive\\Documents\\phd\\Nuclei\\Final_Analysis_Code")
+```
+
+##load relevant libraries
+```{r}
+library(boot)
+library(tidyverse)
+library(table1)
+library(mice)
+library(survival)
+library(survminer)
+
+library(pec)
+library(riskRegression)
+library(rms)
+library(episensr)
+```
+
+##seed
+```{r}
+set.seed(123)
+```
+
+#parse TCGA
+##tcga_clinical.csv
+Find only SCC, and only the patients that received radiation therapy (or not reported).
+```{r}
+tcdata <- read.csv("tcga_clinical.csv")
+tcdata <- tcdata %>% dplyr::select(case_submitter_id, treatment_type, primary_diagnosis, age_at_index, treatment_or_therapy)
+tcdata <- tcdata %>% dplyr::filter(treatment_type == "Radiation Therapy, NOS")
+tcdata <- tcdata %>% dplyr::filter(treatment_or_therapy == "yes" | treatment_or_therapy == "not reported")
+
+#choose SCC only
+target = c("Basaloid squamous cell carcinoma" , "Papillary squamous cell carcinoma", "Squamous cell carcinoma, keratinizing, NOS", "Squamous cell carcinoma, large cell, nonkeratinizing, NOS","Squamous cell carcinoma, NOS")
+tcdata <- tcdata %>% dplyr::filter(primary_diagnosis %in% target)
+
+tcdata <- tcdata %>% dplyr::distinct(case_submitter_id, .keep_all = TRUE)
+tcdata <- tcdata %>% dplyr::select(case_submitter_id, age_at_index, treatment_or_therapy)
+tcdata <- tcdata %>% rename(case_id = case_submitter_id)
+length(tcdata$case_id)
+```
+Now, we have the relevant patients, their id (case_submitter_id), their age (age_at_index), and their radiotherapy status.
+
+##tcga_extra_survival.csv
+Get survival data. 
+```{r}
+tcdata_survival <- read.csv("tcga_extra_survival.csv")
+tcdata_survival <- tcdata_survival %>% dplyr::select(bcr_patient_barcode, clinical_stage, OS, OS.time, PFI, PFI.time)
+#transform NA
+tcdata_survival$clinical_stage <- na_if(tcdata_survival$clinical_stage, "[Not Available]")
+tcdata_survival <- tcdata_survival %>% rename(case_id = bcr_patient_barcode)
+```
+
+Have now pulled the clinical stage (clinical_stage), overall survival (OS) and time (OS.time), and progression-free survival (PFI) and time (PFI.time). 
+case_id should match case_submitter_id above.
+
+##tcga_hpv_inv.csv
+Get HPV status. 
+```{r}
+tcdata_hpv <- read.csv("tcga_hpv_info.csv")
+tcdata_hpv <- tcdata_hpv %>% dplyr::select(SampleBarcode, HPV.status)
+#remove last 4 characters so they match the barcodes in the prev two files
+tcdata_hpv$SampleBarcode <- substr(tcdata_hpv$SampleBarcode, 1, nchar(tcdata_hpv$SampleBarcode) -4)
+tcdata_hpv <- tcdata_hpv %>% rename(case_id = SampleBarcode)
+```
+
+Have pulled HPV status.
+case_id should match case_id(s) above.
+
+##combine the three tcga
+```{r}
+merged_tcga <- tcdata %>% 
+    left_join(tcdata_survival, by = "case_id") %>%
+    left_join(tcdata_hpv, by = "case_id")
+```
+
+#keep presumed radiotherapy (presuming locally advanced disease with not reported radiotherapy did receive radiotherapy)
+```{r}
+length(merged_tcga$case_id)
+#<1B3, 1B3 to IVA, >IVA (AS PER UPTODATE)
+merged_tcga$interim_stage <- ifelse(merged_tcga$clinical_stage == "I" | merged_tcga$clinical_stage == "IA" |
+                                     merged_tcga$clinical_stage == "IB" | merged_tcga$clinical_stage == "IB1" |
+                                     merged_tcga$clinical_stage == "IB2" | merged_tcga$clinical_stage == "Stage I" | 
+                                     merged_tcga$clinical_stage == "Stage IA" | merged_tcga$clinical_stage == "Stage IA1"| 
+                                     merged_tcga$clinical_stage == "Stage IA2" | merged_tcga$clinical_stage == "Stage IB" |
+                                     merged_tcga$clinical_stage == "Stage IB1" | merged_tcga$clinical_stage == "Stage IB2", 1, 
+                                   ifelse(
+                                     merged_tcga$clinical_stage == "II" | merged_tcga$clinical_stage == "II (T2N0)" | 
+                                     merged_tcga$clinical_stage == "IIA" | merged_tcga$clinical_stage == "IIA2" | 
+                                     merged_tcga$clinical_stage == "IIB" | merged_tcga$clinical_stage == "Stage II" | 
+                                     merged_tcga$clinical_stage == "Stage IIA" | merged_tcga$clinical_stage == "Stage IIA1" | 
+                                     merged_tcga$clinical_stage == "Stage IIA2" | merged_tcga$clinical_stage == "Stage IIB" |
+                                     merged_tcga$clinical_stage == "III" | merged_tcga$clinical_stage == "IIIB" | 
+                                     merged_tcga$clinical_stage == "IIIC" | merged_tcga$clinical_stage == "IIIC1" | 
+                                     merged_tcga$clinical_stage == "Stage III" | merged_tcga$clinical_stage == "Stage IIIA" | 
+                                     merged_tcga$clinical_stage == "Stage IIIB" | merged_tcga$clinical_stage == "IVA" | 
+                                     merged_tcga$clinical_stage == "Stage IVA" , 2,
+                                   ifelse(
+                                    merged_tcga$clinical_stage == "IVB" | merged_tcga$clinical_stage == "Stage IVB", 
+                                     3, merged_tcga$clinical_stage)
+                                     ))
+table(merged_tcga$interim_stage)
+merged_tcga <- merged_tcga %>% filter(treatment_or_therapy == "yes" | (treatment_or_therapy == "not reported" & interim_stage == 2))
+merged_tcga <- merged_tcga %>% select(case_id, age_at_index, clinical_stage, OS, OS.time, PFI, PFI.time, HPV.status)
+length(merged_tcga$case_id)
+```
+
+#parse JGH
+```{r}
+jghdata <- read.csv("NOADENO_dist_analysis_05032023.csv")
+jghdata <- jghdata %>% dplyr::select(case_id, recurrence, survival, Age.at.diagnosis.yr., time.to.recurrence..days., time.to.FU..days., time.to.death..days., Clinical.stage.a.time.of.radiation, p16.class)
+jghdata <- jghdata %>% mutate(OS.time = ifelse(is.na(time.to.death..days.), time.to.FU..days., time.to.death..days.), 
+                                  PFI.time = ifelse(is.na(time.to.recurrence..days.), time.to.FU..days., time.to.recurrence..days.))
+jghdata <- jghdata %>% rename(age_at_index = Age.at.diagnosis.yr., OS = survival, PFI = recurrence, HPV.status = p16.class, clinical_stage = Clinical.stage.a.time.of.radiation)
+jghdata <- jghdata %>% select(case_id, age_at_index, clinical_stage, OS, OS.time, PFI, PFI.time, HPV.status)
+#transform NA values
+jghdata$HPV.status <- na_if(jghdata$HPV.status, NaN)
+```
+
+#combine all
+##modify vars
+```{r}
+merged_df <- rbind(merged_tcga, jghdata)
+table(merged_df$HPV.status, useNA = "always")
+table(merged_df$clinical_stage, useNA = "always")
+hist(merged_df$age_at_index)
+
+#fix vars
+merged_df$HPV.status <- ifelse(merged_df$HPV.status == "positive", 1, 
+                      ifelse(merged_df$HPV.status == "negative", 0, merged_df$HPV.status))
+
+#<1B3, 1B3 to IVA, >IVA (AS PER UPTODATE)
+merged_df$clinical_stage <- ifelse(merged_df$clinical_stage == "I" | merged_df$clinical_stage == "IA" |
+                                     merged_df$clinical_stage == "IB" | merged_df$clinical_stage == "IB1" |
+                                     merged_df$clinical_stage == "IB2" | merged_df$clinical_stage == "Stage I" | 
+                                     merged_df$clinical_stage == "Stage IA" | merged_df$clinical_stage == "Stage IA1"| 
+                                     merged_df$clinical_stage == "Stage IA2" | merged_df$clinical_stage == "Stage IB" |
+                                     merged_df$clinical_stage == "Stage IB1" | merged_df$clinical_stage == "Stage IB2", 1, 
+                                   ifelse(
+                                     merged_df$clinical_stage == "II" | merged_df$clinical_stage == "II (T2N0)" | 
+                                     merged_df$clinical_stage == "IIA" | merged_df$clinical_stage == "IIA2" | 
+                                     merged_df$clinical_stage == "IIB" | merged_df$clinical_stage == "Stage II" | 
+                                     merged_df$clinical_stage == "Stage IIA" | merged_df$clinical_stage == "Stage IIA1" | 
+                                     merged_df$clinical_stage == "Stage IIA2" | merged_df$clinical_stage == "Stage IIB" |
+                                     merged_df$clinical_stage == "III" | merged_df$clinical_stage == "IIIB" | 
+                                     merged_df$clinical_stage == "IIIC" | merged_df$clinical_stage == "IIIC1" | 
+                                     merged_df$clinical_stage == "Stage III" | merged_df$clinical_stage == "Stage IIIA" | 
+                                     merged_df$clinical_stage == "Stage IIIB" | merged_df$clinical_stage == "IVA" | 
+                                     merged_df$clinical_stage == "Stage IVA" , 2,
+                                   ifelse(
+                                    merged_df$clinical_stage == "IVB" | merged_df$clinical_stage == "Stage IVB", 
+                                     3, merged_df$clinical_stage)
+                                     ))
+#factor
+merged_df$clinical_stage <- as.factor(merged_df$clinical_stage)
+merged_df$HPV.status <- as.factor(merged_df$HPV.status)
+
+#clean
+merged_df <- merged_df %>% filter(is.na(clinical_stage) | clinical_stage == 1 | clinical_stage == 2)
+merged_df$clinical_stage <- droplevels(merged_df$clinical_stage)
+```
+
+
+##add nucleus size features
+###tcga
+```{r}
+tcga_numbers <- read.csv("C:\\Users\\harry\\OneDrive\\Documents\\phd\\Nuclei\\TCGA_DATA_FINAL\\class_0_results_merged.csv")
+tcga_numbers <- tcga_numbers %>% mutate(case_id = substr(case_id, start = 1, stop = 12))
+```
+
+###JGH
+```{r}
+jgh_numbers <- read.csv("C:\\Users\\harry\\OneDrive\\Documents\\phd\\Nuclei\\JGH_NUMBERS.csv")
+```
+
+###merge jgh and tcga
+```{r}
+combined_df <- rbind(tcga_numbers, jgh_numbers) %>%
+  group_by(case_id) %>%
+  summarise(
+    nuclear_mean = last(nuclear_mean[!is.na(nuclear_mean)]),
+    nuclear_sd = last(nuclear_sd[!is.na(nuclear_sd)])
+  )
+
+#merge
+merged_df <- merge(merged_df, combined_df, by = "case_id", all.x = TRUE)
+
+```
+
+###write dataframe, and missing cases (for QA)
+```{r}
+write.csv(merged_df, "MERGED_DF.csv")
+na_df <- merged_df %>% filter(is.na(nuclear_mean))
+write.csv(na_df, "MISSING_CASES.csv")
+```
+
+###Clean merged dataframe
+```{r}
+merged_df <- merged_df %>%
+  filter(!is.na(nuclear_mean))
+merged_df$clinical_stage <- droplevels(merged_df$clinical_stage)
+```
+
+##get chemotherapy status (for table 1)
+###tcga
+```{r}
+tcdata_chemo <- read.csv("tcga_clinical.csv")
+tcdata_chemo <- tcdata_chemo %>% dplyr::select(case_submitter_id, treatment_type, treatment_or_therapy)
+tcdata_chemo <- tcdata_chemo %>% dplyr::filter(treatment_type == "Pharmaceutical Therapy, NOS")
+tcdata_chemo <- tcdata_chemo %>% dplyr::select(case_submitter_id, treatment_or_therapy)
+table(tcdata_chemo$treatment_or_therapy)
+tcdata_chemo <- tcdata_chemo %>% dplyr::mutate(treatment_or_therapy = ifelse(treatment_or_therapy == "yes", 1, 
+                                               ifelse(treatment_or_therapy == "not reported", NA, 0)))
+table(tcdata_chemo$treatment_or_therapy, useNA = "always")
+tcdata_chemo <- tcdata_chemo %>% rename(case_id = case_submitter_id)
+tcdata_chemo <- tcdata_chemo %>% rename(chemotherapy = treatment_or_therapy)
+```
+###jgh
+```{r}
+jghdata_chemo <- read.csv("NOADENO_dist_analysis_05032023.csv")
+jghdata_chemo <- jghdata_chemo %>% dplyr::select(case_id, concurrent.chemo.class)
+table(jghdata_chemo$concurrent.chemo.class, useNA = "always")
+jghdata_chemo <- jghdata_chemo %>% dplyr::mutate(concurrent.chemo.class = ifelse(concurrent.chemo.class == "1", 1, 
+                                               ifelse(concurrent.chemo.class == 0, 0, NA)))
+table(jghdata_chemo$concurrent.chemo.class, useNA = "always")
+jghdata_chemo <- jghdata_chemo %>% rename(chemotherapy = concurrent.chemo.class)
+```
+###merge
+```{r}
+df1 <- left_join(merged_df, tcdata_chemo, by = "case_id", suffix = c("", ".df2"))
+df1 <- left_join(df1, jghdata_chemo, by = "case_id", suffix = c("", ".df3"))
+
+#combine columns
+df1 <- df1 %>%
+  mutate(chemotherapy = coalesce(chemotherapy, chemotherapy.df3)) %>%
+  select(-chemotherapy.df3)
+```
+
+###table1
+```{r}
+my.render.cont <- function(x) {
+    with(stats.apply.rounding(stats.default(x), digits=2), c("",
+        "Mean (SD)"=sprintf("%s (%s)", MEAN, SD)))
+}
+
+my.render.cat <- function(x) {
+    c("", sapply(stats.default(x), function(y) with(y,
+        sprintf("%d (%0.f%%)", FREQ, PCT))))
+}
+pvalue <- function(x, ...) {
+    # Construct vectors of data y, and groups (strata) g
+    y <- unlist(x)
+    g <- factor(rep(1:length(x), times=sapply(x, length)))
+    if (is.numeric(y)) {
+        # For numeric variables, perform a standard 2-sample t-test
+        p <- t.test(y ~ g)$p.value
+    } else {
+        # For categorical variables, perform a chi-squared test of independence
+        p <- chisq.test(table(y, g))$p.value
+    }
+    # Format the p-value, using an HTML entity for the less-than sign.
+    # The initial empty string places the output on the line below the variable label.
+    c("", sub("<", "&lt;", format.pval(p, digits=3, eps=0.001)))
+}
+```
+
+```{r}
+t1_recurrence <- table1(~ nuclear_mean + nuclear_sd  + age_at_index + clinical_stage + HPV.status + chemotherapy | PFI, data=df1, render.continuous = my.render.cont, render.categorical = my.render.cat)
+print(t1_recurrence)
+
+t1_survival <- table1(~ nuclear_mean + nuclear_sd  + age_at_index + clinical_stage + HPV.status + chemotherapy | OS, data=df1, render.continuous = my.render.cont, render.categorical = my.render.cat)
+print(t1_survival)
+
+
+```
+
+###table1 3 digits
+```{r}
+my.render.cont <- function(x) {
+    with(stats.apply.rounding(stats.default(x), digits=3), c("",
+        "Mean (SD)"=sprintf("%s (%s)", MEAN, SD)))
+}
+
+my.render.cat <- function(x) {
+    c("", sapply(stats.default(x), function(y) with(y,
+        sprintf("%d (%0.f%%)", FREQ, PCT))))
+}
+pvalue <- function(x, ...) {
+    # Construct vectors of data y, and groups (strata) g
+    y <- unlist(x)
+    g <- factor(rep(1:length(x), times=sapply(x, length)))
+    if (is.numeric(y)) {
+        # For numeric variables, perform a standard 2-sample t-test
+        p <- t.test(y ~ g)$p.value
+    } else {
+        # For categorical variables, perform a chi-squared test of independence
+        p <- chisq.test(table(y, g))$p.value
+    }
+    # Format the p-value, using an HTML entity for the less-than sign.
+    # The initial empty string places the output on the line below the variable label.
+    c("", sub("<", "&lt;", format.pval(p, digits=3, eps=0.001)))
+}
+```
+
+```{r}
+t1_recurrence <- table1(~ nuclear_mean + nuclear_sd  + age_at_index + clinical_stage + HPV.status + chemotherapy | PFI, data=df1, render.continuous = my.render.cont, render.categorical = my.render.cat)
+print(t1_recurrence)
+
+t1_survival <- table1(~ nuclear_mean + nuclear_sd  + age_at_index + clinical_stage + HPV.status + chemotherapy | OS, data=df1, render.continuous = my.render.cont, render.categorical = my.render.cat)
+print(t1_survival)
+
+
+```
+
+#Collinearity - GGALLY
+```{r warning = FALSE}
+library(GGally)
+smalldf <- merged_df %>% select(age_at_index, clinical_stage, nuclear_mean, nuclear_sd, OS, PFI)
+ggpairs(smalldf)
+```
+
+##collinearity figure (not used)
+```{r warning = FALSE}
+library(GGally)
+smalldf <- merged_df %>% select(age_at_index, clinical_stage, nuclear_mean, nuclear_sd, HPV.status, OS, PFI)
+smalldf <- smalldf %>% rename(Age = age_at_index, Stage = clinical_stage, Mean = nuclear_mean, Stdev = nuclear_sd, Mortality = OS, Progression = PFI, HPV = HPV.status)
+
+smalldf <- smalldf %>% mutate(Mortality = as.factor(Mortality), Progression = as.factor(Progression))
+#ggpairs(smalldf)
+pairs_figure <- ggpairs(smalldf)
+ggsave(".//figures//figure_supplement_pairs.pdf", pairs_figure, width = 20, height = 10, units = "in")
+```
+
+#sample size calcs
+```{r}
+library(survival)
+surv <- Surv(merged_df$OS.time, merged_df$OS)
+coxph(surv ~ 1, data = merged_df)
+```
+r2ssquared = 1 - exp(2*ln(lNull)/n)
+```{r}
+1 - exp(2*-177.9496/179)
+```
+```{r}
+0.863067*0.15
+```
+
+##prevalence and event rate
+```{r}
+table(merged_df$OS)
+63/291
+sum(merged_df$OS.time)/365
+63/835.2137
+```
+event rate ~0.075
+prevalence ~ 0.22
+
+##c statistic-based
+```{r}
+#assume C
+C = 0.75
+C
+#equation 22
+D <- 5.5*(C-0.5) + 10.26*(C-0.5)^3
+D
+#equation 21
+a <- (pi/8)*D^2
+b <- (pi^2)/6 + (pi/8)*D^2
+r2d <- a/b
+r2d
+#then use R2D as proxy for royston, then equation 20:
+a <- -(pi^2)/6*r2d
+b <- ((1 - ((pi^2)/6)) * r2d)-1
+roys <- a/b
+roys
+#then equation 18:
+quig <- - 63 * log(1 - roys)
+quig
+#then equation 6:
+r2c <- 1 - exp(-quig/291)
+r2c
+```
+##mean follow
+```{r}
+mean(merged_df$OS.time)/365
+```
+
+```{r}
+library(pmsampsize)
+#survival
+
+pmsampsize(type = "s", csrsquared =   0.12946, parameters = 4, shrinkage = 0.90, rate = 0.0754298, timepoint =1, meanfup = 2.87)
+```
+
+#more tableone code
+```{r}
+my.render.cont <- function(x) {
+    with(stats.apply.rounding(stats.default(x), digits=2), c("",
+        "Mean (SD)"=sprintf("%s (%s)", MEAN, SD)))
+}
+
+my.render.cat <- function(x) {
+    c("", sapply(stats.default(x), function(y) with(y,
+        sprintf("%d (%0.f%%)", FREQ, PCT))))
+}
+
+pvalue <- function(x, ...) {
+    # Construct vectors of data y, and groups (strata) g
+    y <- unlist(x)
+    g <- factor(rep(1:length(x), times=sapply(x, length)))
+    if (is.numeric(y)) {
+        # For numeric variables, perform a standard 2-sample t-test
+        p <- t.test(y ~ g)$p.value
+    } else {
+        # For categorical variables, perform a chi-squared test of independence
+        p <- chisq.test(table(y, g))$p.value
+    }
+    # Format the p-value, using an HTML entity for the less-than sign.
+    # The initial empty string places the output on the line below the variable label.
+    c("", sub("<", "&lt;", format.pval(p, digits=3, eps=0.001)))
+}
+```
+
+
+```{r}
+t1_survival <- table1(~ nuclear_mean + nuclear_sd  + age_at_index + clinical_stage + HPV.status | OS, data=merged_df, render.continuous = my.render.cont, render.categorical = my.render.cat)
+print(t1_survival)
+```
+
+
+```{r}
+t1_recurrence <- table1(~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage + HPV.status | PFI, data=merged_df, render.continuous = my.render.cont, render.categorical = my.render.cat)
+print(t1_recurrence)
+```
+
+
+```{r}
+t1_both <- table1(~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage | PFI + OS, data=merged_df, render.continuous = my.render.cont, render.categorical = my.render.cat)
+print(t1_both)
+```
+
+
+#analysis
+##KM 
+
+```{r}
+merged_df <- merged_df %>% mutate(size_binary = ifelse(nuclear_mean < median(nuclear_mean), 0, 1))
+merged_df <- merged_df %>% mutate(size_binary = as.factor(size_binary))
+```
+
+```{r}
+S_OS <- Surv(merged_df$OS.time, merged_df$OS)
+S_PFI <- Surv(merged_df$PFI.time, merged_df$PFI)
+```
+
+###size (not used)
+```{r}
+OS.kmfit <- survfit(S_OS ~  size_binary, data = merged_df, conf.int = 0.95)
+PFI.kmfit <- survfit(S_PFI ~  size_binary, data = merged_df, conf.int = 0.95)
+```
+
+```{r}
+g1_km <- ggsurvplot(fit = OS.kmfit, # Kaplan Meier survival model
+            palette = c("#4575b4", "#d73027"), # custom color palette
+           legend.title = "Nuclei Size At Baseline", # legend title
+           legend.labs = c("Below Median", "Above Median"), # label lines
+           title = "Kaplan-Meier Curves - Overall Survival",
+           xlab = "Time (days)", conf.int = TRUE#, pval = TRUE
+           )
+
+ ggsurvplot(fit = OS.kmfit, # Kaplan Meier survival object
+            fun = "cumhaz", # "cumulative hazard" function
+            size = 1, # change line size
+            palette = c("#4575b4", "#d73027"),# custom color palette, feel free to experiment
+            title = "Cumulative Hazard - OS",
+            legend.labs = c("below median size", "above median size"), conf.int = TRUE, pval=TRUE    # Change legend labels
+            ) 
+ 
+g2_km <- ggsurvplot(fit = PFI.kmfit , # Kaplan Meier survival model
+            palette = c("#4575b4", "#d73027"), # custom color palette
+           legend.title = "Nuclei Size At Baseline", # legend title
+           legend.labs = c("Below Median", "Above Median"), # label lines
+           title = "Kaplan-Meier Curves - Progression",
+           xlab = "Time (days)", conf.int = TRUE#, pval = TRUE
+           )
+
+ ggsurvplot(fit = PFI.kmfit , # Kaplan Meier survival object
+            fun = "cumhaz", # "cumulative hazard" function
+            size = 1, # change line size
+            palette = c("#4575b4", "#d73027"),# custom color palette, feel free to experiment
+            title = "Cumulative Hazard - PFI",
+            legend.labs = c("below median size", "above median size"), conf.int = TRUE, pval=TRUE    # Change legend labels
+            ) 
+```
+####in thirds (not used)
+```{r}
+merged_df2 <- merged_df %>%
+  mutate(size_group = cut(nuclear_mean, 
+                          breaks = quantile(nuclear_mean, probs = c(0, 1/3, 2/3, 1), na.rm = TRUE), 
+                          labels = c("Lower Third", "Middle Third", "Upper Third"), 
+                          include.lowest = TRUE))
+
+# Ensure size_group is treated as a factor
+merged_df2 <- merged_df2 %>%
+  mutate(size_group = as.factor(size_group))
+
+# Create the survival object
+S_OS <- Surv(merged_df2$OS.time, merged_df$OS)
+
+# Fit the Kaplan-Meier model using the three quantiles
+OS.kmfit <- survfit(S_OS ~ size_group, data = merged_df2, conf.int = 0.95)
+
+# Plot the survival curves
+ggsurvplot(fit = OS.kmfit, # Kaplan-Meier survival model
+           palette = c("#4575b4", "#91bfdb", "#d73027"), # Custom color palette for three groups
+           legend.title = "Nuclei Size At Baseline", # Legend title
+           legend.labs = c("Lower Third", "Middle Third", "Upper Third"), # Label lines
+           title = "Survival Curves - Overall Survival",
+           xlab = "Time (days)", conf.int = TRUE, pval = TRUE
+           )
+```
+
+###std (not used)
+```{r}
+merged_df <- merged_df %>% mutate(std_binary = ifelse(nuclear_sd < median(nuclear_sd), 0, 1))
+merged_df <- merged_df %>% mutate(std_binary = as.factor(std_binary))
+OS.kmfit <- survfit(S_OS ~  std_binary, data = merged_df, conf.int = 0.95)
+PFI.kmfit <- survfit(S_PFI ~  std_binary, data = merged_df, conf.int = 0.95)
+```
+
+```{r}
+g3_km <- ggsurvplot(fit = OS.kmfit, # Kaplan Meier survival model
+            palette = c("#4575b4", "#d73027"), # custom color palette
+           legend.title = "Nuclei Size Std At Baseline", # legend title
+           legend.labs = c("Below Median", "Above Median"), # label lines
+           title = "Kaplan-Meier Curves - Overall Survival",
+           xlab = "Time (days)", conf.int = TRUE#, pval = TRUE
+           )
+
+ ggsurvplot(fit = OS.kmfit, # Kaplan Meier survival object
+            fun = "cumhaz", # "cumulative hazard" function
+            size = 1, # change line size
+            palette = c("#4575b4", "#d73027"),# custom color palette, feel free to experiment
+            title = "Cumulative Hazard - OS",
+            legend.labs = c("below median size", "above median size"), conf.int = TRUE, pval=TRUE    # Change legend labels
+            ) 
+ 
+g4_km<- ggsurvplot(fit = PFI.kmfit , # Kaplan Meier survival model
+            palette = c("#4575b4", "#d73027"), # custom color palette
+           legend.title = "Nuclei Size At Baseline", # legend title
+           legend.labs = c("Below Median", "Above Median"), # label lines
+           title = "Kaplan-Meier Curves - Progression",
+           xlab = "Time (days)", conf.int = TRUE#, pval = TRUE
+           )
+
+ ggsurvplot(fit = PFI.kmfit , # Kaplan Meier survival object
+            fun = "cumhaz", # "cumulative hazard" function
+            size = 1, # change line size
+            palette = c("#4575b4", "#d73027"),# custom color palette, feel free to experiment
+            title = "Cumulative Hazard - PFI",
+            legend.labs = c("below median size", "above median size"), conf.int = TRUE, pval=TRUE    # Change legend labels
+            ) 
+```
+
+###all (supplemental figure)
+```{r}
+merged_df <- merged_df %>% mutate(size_binary = ifelse(nuclear_mean < median(nuclear_mean), 0, 1))
+merged_df <- merged_df %>% mutate(size_binary = as.factor(size_binary))
+
+OS.kmfit_size <- survfit(S_OS ~  size_binary, data = merged_df, conf.int = 0.95)
+PFI.kmfit_size <- survfit(S_PFI ~  size_binary, data = merged_df, conf.int = 0.95)
+
+g1_km <- ggsurvplot(fit = OS.kmfit_size, # Kaplan Meier survival model
+            palette = c("#4575b4", "#d73027"), # custom color palette
+           legend.title = "Nuclei Mean", # legend title
+           legend.labs = c("Below Median", "Above Median"), # label lines
+           title = "Kaplan-Meier Overall Survival ~ Mean",
+           xlab = "Time (days)", ylab = "Survival Probability", conf.int = TRUE, pval = TRUE
+           )
+
+g2_km <- ggsurvplot(fit = PFI.kmfit_size , # Kaplan Meier survival model
+            palette = c("#4575b4", "#d73027"), # custom color palette
+           legend.title = "Nuclei Mean", # legend title
+           legend.labs = c("Below Median", "Above Median"), # label lines
+           title = "Kaplan-Meier Progression ~ Mean",
+           xlab = "Time (days)", ylab = "Progression Probability",  conf.int = TRUE, pval = TRUE
+           )
+
+merged_df <- merged_df %>% mutate(std_binary = ifelse(nuclear_sd < median(nuclear_sd), 0, 1))
+merged_df <- merged_df %>% mutate(std_binary = as.factor(std_binary))
+
+OS.kmfit_std <- survfit(S_OS ~  std_binary, data = merged_df, conf.int = 0.95)
+PFI.kmfit_std <- survfit(S_PFI ~  std_binary, data = merged_df, conf.int = 0.95)
+
+g3_km <- ggsurvplot(fit = OS.kmfit_std, # Kaplan Meier survival model
+            palette = c("#4575b4", "#d73027"), # custom color palette
+           legend.title = "Nuclei Std", # legend title
+           legend.labs = c("Below Median", "Above Median"), # label lines
+           title = "Kaplan-Meier Overall Survival ~ Std",
+           xlab = "Time (days)", ylab = "Survival Probability",  conf.int = TRUE, pval = TRUE
+           )
+
+g4_km<- ggsurvplot(fit = PFI.kmfit_std , # Kaplan Meier survival model
+            palette = c("#4575b4", "#d73027"), # custom color palette
+           legend.title = "Nuclei Std", # legend title
+           legend.labs = c("Below Median", "Above Median"), # label lines
+           title = "Kaplan-Meier Progression ~ Std",
+           xlab = "Time (days)", ylab = "Progression Probability",  conf.int = TRUE, pval = TRUE
+           )
+
+x <- list(g1_km, g2_km, g3_km, g4_km)
+g_km <- arrange_ggsurvplots(x, ncol = 2, nrow = 2, print = FALSE)
+ggsave(".//figures//figure_s3_km.pdf", g_km, width = 20, height = 10, units = "in")
+print(g_km)
+```
+
+```{r}
+g1_km
+g2_km
+g3_km
+g4_km
+```
+###Figure2 - Raw Survival Times
+
+```{r}
+S_OS_null <- Surv(merged_df$OS.time/365*12, merged_df$OS)
+S_PFI_null <- Surv(merged_df$PFI.time/365*12, merged_df$PFI)
+OS.kmfit_null <- survfit(S_OS_null ~  1, data = merged_df, conf.int = 0.95)
+PFI.kmfit_null <- survfit(S_PFI_null ~  1, data = merged_df, conf.int = 0.95)
+# Combine on the same plot
+fit <- list(PFI = PFI.kmfit_null, OS = OS.kmfit_null)
+g_km_3 <- ggsurvplot_combine(fit, merged_df, risk.table = TRUE, cumevents = TRUE, tables.height = 0.2, 
+                              legend.title = "", # legend title
+                              legend.labs = c("Progression", "Survival"), # label lines
+                              title = "", 
+                              xlim = c(0, 12*5), xlab = "Time (months)",
+                              break.x.by = 6, 
+                             
+                               font.x = c(18, face = "bold"),
+                              font.y = c(18, face = "bold"),
+                              font.tickslab = c(18),
+                              font.legend = c(18),  
+                             tables.theme = theme_survminer() + 
+                              theme(plot.title = element_text(size = 18), 
+                                   legend.title = element_text(size = 16),
+                                    legend.text = element_text(size = 16),
+                                    axis.text.x = element_text(size = 16),
+                                    axis.text.y = element_text(size = 16),
+                                    axis.title.x = element_text(size = 16),
+                                    axis.title.y = element_text(size = 16)), 
+                             fontsize = 5)
+g_km_3
+ggsave_workaround <- function(g){survminer:::.build_ggsurvplot(x = g,
+                                                               surv.plot.height = NULL,
+                                                               risk.table.height = NULL,
+                                                               ncensor.plot.height = NULL)}
+
+g_to_save <- ggsave_workaround(g_km_3)
+ggsave(".//figures//figure_2_km.pdf", g_to_save, width = 10, height = 8, units = "in")
+```
+
+
+##Cox
+###multivariate complete case (not used)
+```{r}
+OS.coxfit.adjusted <-  coxph(S_OS ~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage , data = merged_df)
+summary(OS.coxfit.adjusted)
+
+PFI.coxfit.adjusted <-   coxph(S_PFI ~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage , data = merged_df)
+summary(PFI.coxfit.adjusted)
+
+```
+
+###MICE
+```{r}
+#missing data pattern
+md.pattern(merged_df)
+```
+
+```{r}
+#do mice - 10 sets, default settings (uses HPV status to impute)
+merged_df_mice = mice(merged_df, m=10)
+```
+
+```{r}
+#visualize MICE
+stripplot(merged_df_mice, clinical_stage~.imp, col=c("grey",mdc(2)),pch=c(1,20))
+```
+
+####Mice Estimates (main results table)
+####Setup and OS
+```{r}
+S_OS <- Surv(merged_df$OS.time, merged_df$OS)
+S_PFI <- Surv(merged_df$PFI.time, merged_df$PFI)
+
+OS_mi_calc = with(data=merged_df_mice, coxph(S_OS ~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage))
+summary(OS_mi_calc)
+
+pooled_results <- pool(OS_mi_calc)
+
+summary_results <- summary(pooled_results)
+summary_results$HR <- exp(summary_results$estimate)  # Convert log HR to HR
+summary_results$HR_lower <- exp(summary_results$estimate - 1.96 * summary_results$std.error)  # Lower bound
+summary_results$HR_upper <- exp(summary_results$estimate + 1.96 * summary_results$std.error)  # Upper bound
+
+library(knitr)
+# Display results
+summary_results[, c("term", "HR", "HR_lower", "HR_upper")]
+
+# Select columns and format
+table_data <- summary_results[, c("term", "HR", "HR_lower", "HR_upper", "p.value")]
+names(table_data) <- c("Variable", "Hazard Ratio", "Lower CI", "Upper CI", "p-value")
+
+#OS RESULTS
+# Create a formatted table with kable
+kable(
+  table_data,
+  digits = c(NA, 2, 2, 2, 4),
+  caption = "Pooled Cox Regression Results OS"
+)
+```
+
+####PFI
+```{r}
+PFI_mi_calc = with(data=merged_df_mice, coxph(S_PFI ~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage))
+summary(PFI_mi_calc)
+
+pooled_results <- pool(PFI_mi_calc)
+
+summary_results <- summary(pooled_results)
+summary_results$HR <- exp(summary_results$estimate)  # Convert log HR to HR
+summary_results$HR_lower <- exp(summary_results$estimate - 1.96 * summary_results$std.error)  # Lower bound
+summary_results$HR_upper <- exp(summary_results$estimate + 1.96 * summary_results$std.error)  # Upper bound
+
+library(knitr)
+# Display results
+summary_results[, c("term", "HR", "HR_lower", "HR_upper")]
+
+# Select columns and format
+table_data <- summary_results[, c("term", "HR", "HR_lower", "HR_upper", "p.value")]
+names(table_data) <- c("Variable", "Hazard Ratio", "Lower CI", "Upper CI", "p-value")
+
+# Create a formatted table with kable
+kable(
+  table_data,
+  digits = c(NA, 2, 2, 2, 4),
+  caption = "Pooled Cox Regression Results PFI"
+)
+```
+
+
+###calibration, discrimination, validation
+####internal MICE validation
+dxy = 2*(c-1/2)
+dxy/2 = c-1/2
+c = dxy/2 + 1/2
+```{r}
+optimisms_OS <- c()
+cs_OS <- c()
+
+optimisms_PFI <- c()
+cs_PFI <- c()
+
+for (i in 1:10)
+{
+  d1 = complete(merged_df_mice, i)
+  cox_model <- cph(S_OS ~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage + HPV.status, data = d1, x = TRUE, y = TRUE)
+  v_os <- validate(cox_model, B = 1000)
+  
+  c <- v_os[1,5]/2 + 1/2
+  cs_OS <- c(cs_OS, c )
+  optimism <- (v_os[1,1]/2 + 1/2) - (v_os[1,5]/2 + 1/2)  
+  optimisms_OS <- c(optimisms_OS, optimism)
+
+  cox_model <- cph(S_PFI ~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage, data = d1, x = TRUE, y = TRUE)
+  v_pfi <- validate(cox_model, B = 1000)
+  c <- v_pfi[1,5]/2 + 1/2
+  cs_PFI <- c(cs_PFI, c )
+  optimism <- (v_pfi[1,1]/2 + 1/2) - (v_pfi[1,5]/2 + 1/2)  
+  optimisms_PFI <- c(optimisms_PFI, optimism)
+}
+
+mean(optimisms_OS)
+mean(cs_OS)
+mean(optimisms_PFI)
+mean(cs_PFI)
+
+```
+
+```{r}
+d1 = complete(merged_df_mice, 1)
+cox_model <- cph(S_OS ~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage + HPV.status, data = d1, x = TRUE, y = TRUE)
+validate(cox_model, B = 100)
+
+cox_model <- cph(S_OS ~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage + HPV.status, data = d1, x = TRUE, y = TRUE, surv = TRUE)
+cal <- calibrate(cox_model, u = 365*5)
+plot(cal)
+cal <- calibrate(cox_model, u = 365*1)
+plot(cal)
+
+```
+
+####calibration (complete case)
+```{r}
+cox_model <- cph(S_OS ~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage, data = merged_df, x = TRUE, y = TRUE, surv = TRUE)
+cal <- calibrate(cox_model, u = 365*1)
+plot(cal)
+cal <- calibrate(cox_model, u = 365*5)
+plot(cal)
+
+cox_model <- cph(S_PFI ~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage, data = merged_df, x = TRUE, y = TRUE, surv = TRUE)
+cal <- calibrate(cox_model, u = 365*1)
+plot(cal)
+cal <- calibrate(cox_model, u = 365*5)
+plot(cal)
+```
+
+###test assumptions
+####KMfit -lnln curves
+```{r}
+OS.kmfit1 <- survfit(S_OS ~  size_binary, data = merged_df, conf.int = 0.95)
+PFI.kmfit1 <- survfit(S_PFI ~  size_binary, data = merged_df, conf.int = 0.95)
+OS.kmfit2 <- survfit(S_OS ~  std_binary, data = merged_df, conf.int = 0.95)
+PFI.kmfit2 <- survfit(S_PFI ~  std_binary, data = merged_df, conf.int = 0.95)
+
+plot(OS.kmfit1 , # Kaplan Meier survival object
+     col = c("red", "blue"), # colors of the lines - smokers, nonsmokers
+     fun = "cloglog", # "complementary log-log link function" i.e. ln(-ln(1-p))
+     main = "OS KM -ln(-ln(S)) curves",
+     xlab = "Time (years)", # x axis label
+     ylab = "ln(-ln S(t))") # y axis label
+
+plot(PFI.kmfit1, # Kaplan Meier survival object
+     col = c("red", "blue"), # colors of the lines - smokers, nonsmokers
+     fun = "cloglog", # "complementary log-log link function" i.e. ln(-ln(1-p))
+     main = "PFI KM -ln(-ln(S)) curves",
+     xlab = "Time (years)", # x axis label
+     ylab = "ln(-ln S(t))") # y axis label
+
+plot(OS.kmfit2 , # Kaplan Meier survival object
+     col = c("red", "blue"), # colors of the lines - smokers, nonsmokers
+     fun = "cloglog", # "complementary log-log link function" i.e. ln(-ln(1-p))
+     main = "OS KM -ln(-ln(S)) curves",
+     xlab = "Time (years)", # x axis label
+     ylab = "ln(-ln S(t))") # y axis label
+
+plot(PFI.kmfit2, # Kaplan Meier survival object
+     col = c("red", "blue"), # colors of the lines - smokers, nonsmokers
+     fun = "cloglog", # "complementary log-log link function" i.e. ln(-ln(1-p))
+     main = "PFI KM -ln(-ln(S)) curves",
+     xlab = "Time (years)", # x axis label
+     ylab = "ln(-ln S(t))") # y axis label
+```
+####zph test
+```{r}
+cox.zph(OS.coxfit.adjusted)
+cox.zph(PFI.coxfit.adjusted)
+```
+
+####martingale residuals
+```{r}
+
+OS.coxfit.adjusted <-  coxph(S_OS ~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage , data = d1)
+summary(OS.coxfit.adjusted)
+
+PFI.coxfit.adjusted <-   coxph(S_PFI ~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage , data = d1)
+summary(PFI.coxfit.adjusted)
+
+#df_complete <- merged_df[complete.cases(merged_df), ]
+df_complete <- d1
+df_complete <- df_complete %>% mutate(size_binary = ifelse(nuclear_mean < median(nuclear_mean), 0, 1))
+# SOLUTION
+res <- residuals(OS.coxfit.adjusted, type = "martingale") 
+
+par(mfrow = c(1, 3))
+boxplot(res ~ df_complete$size_binary)
+title("Survival: Martingale residuals\nversus binary nuclei size status") 
+
+boxplot(res ~ df_complete$std_binary)
+title("Survival: Martingale residuals\nversus binary nuclei std status") 
+
+plot(res ~ df_complete$OS.time)
+title("Survival: Martingale residuals\nversus survival time") 
+
+
+res <- residuals(PFI.coxfit.adjusted, type = "martingale") 
+
+par(mfrow = c(1, 3))
+boxplot(res ~ df_complete$size_binary)
+title("Recurrence: Martingale residuals\nversus binary nuclei size status") 
+
+boxplot(res ~ df_complete$std_binary)
+title("Survival: Martingale residuals\nversus binary nuclei std status") 
+
+
+plot(res ~ df_complete$PFI.time)
+title("Recurrence: Martingale residuals\nversus PFI time") 
+
+
+```
+
+####influential observations
+```{r}
+resid.dfbeta <- residuals(OS.coxfit.adjusted, type = "dfbeta")
+
+n.obs <- length(df_complete$nuclear_mean)
+index.obs <- 1:n.obs
+plot(resid.dfbeta[,1] ~ index.obs, type = "h", xlab = "Observations", 
+     ylab = "Change in coefficients", main = "Survival dfbetas")
+abline(h = 0)
+
+
+resid.dfbeta <- residuals(PFI.coxfit.adjusted, type = "dfbeta")
+
+n.obs <- length(df_complete$nuclear_mean)
+index.obs <- 1:n.obs
+plot(resid.dfbeta[,1] ~ index.obs, type = "h", xlab = "Observations", 
+     ylab = "Change in coefficients", main = "Recurrence dfbetas")
+abline(h = 0)
+
+resid.dfbeta <- residuals(OS.coxfit.adjusted, type = "dfbeta")
+
+n.obs <- length(df_complete$nuclear_sd)
+index.obs <- 1:n.obs
+plot(resid.dfbeta[,2] ~ index.obs, type = "h", xlab = "Observations", 
+     ylab = "Change in coefficients", main = "Survival dfbetas")
+abline(h = 0)
+
+resid.dfbeta <- residuals(PFI.coxfit.adjusted, type = "dfbeta")
+
+n.obs <- length(df_complete$nuclear_sd)
+index.obs <- 1:n.obs
+plot(resid.dfbeta[,2] ~ index.obs, type = "h", xlab = "Observations", 
+     ylab = "Change in coefficients", main = "Recurrence dfbetas")
+abline(h = 0)
+```
+
+```{r}
+resid.dfbeta <- residuals(OS.coxfit.adjusted, type = "dfbeta")
+
+n.obs <- length(df_complete$nuclear_sd)
+index.obs <- 1:n.obs
+plot(resid.dfbeta[,2] ~ index.obs, type = "h", xlab = "Observations", 
+     ylab = "Change in coefficients", main = "Survival dfbetas")
+abline(h = 0)
+
+
+resid.dfbeta <- residuals(PFI.coxfit.adjusted, type = "dfbeta")
+
+n.obs <- length(df_complete$nuclear_sd)
+index.obs <- 1:n.obs
+plot(resid.dfbeta[,2] ~ index.obs, type = "h", xlab = "Observations", 
+     ylab = "Change in coefficients", main = "Recurrence dfbetas")
+abline(h = 0)
+```
+
+#flowchart
+##get numbers excluded
+```{r}
+#parse TCGA
+##tcga_clinical.csv
+#using this to find only the SCC, and only the patients that received radiation therapy
+tcdata <- read.csv("tcga_clinical.csv")
+tcdata <- tcdata %>% dplyr::select(case_submitter_id, treatment_type, primary_diagnosis, age_at_index, treatment_or_therapy)
+tcdata <- tcdata %>% dplyr::filter(treatment_type == "Radiation Therapy, NOS")
+
+#choose SCC only
+target = c("Basaloid squamous cell carcinoma" , "Papillary squamous cell carcinoma", "Squamous cell carcinoma, keratinizing, NOS", "Squamous cell carcinoma, large cell, nonkeratinizing, NOS","Squamous cell carcinoma, NOS")
+
+tcdata <- tcdata %>% dplyr::distinct(case_submitter_id, .keep_all = TRUE)
+
+tcdata <- tcdata %>% rename(case_id = case_submitter_id)
+length(tcdata$case_id)
+```
+307 total
+
+##adenocarcinoma
+```{r}
+#parse TCGA
+##tcga_clinical.csv
+#using this to find only the SCC, and only the patients that received radiation therapy
+tcdata <- read.csv("tcga_clinical.csv")
+tcdata <- tcdata %>% dplyr::select(case_submitter_id, treatment_type, primary_diagnosis, age_at_index, treatment_or_therapy)
+tcdata <- tcdata %>% dplyr::filter(treatment_type == "Radiation Therapy, NOS")
+
+#choose SCC only
+target = c("Basaloid squamous cell carcinoma" , "Papillary squamous cell carcinoma", "Squamous cell carcinoma, keratinizing, NOS", "Squamous cell carcinoma, large cell, nonkeratinizing, NOS","Squamous cell carcinoma, NOS")
+tcdata <- tcdata %>% dplyr::filter(primary_diagnosis %in% target)
+tcdata <- tcdata %>% dplyr::distinct(case_submitter_id, .keep_all = TRUE)
+
+tcdata <- tcdata %>% rename(case_id = case_submitter_id)
+length(tcdata$case_id)
+```
+
+```{r}
+307 - 254
+```
+53 excluded for adenocarcinoma
+
+##non-radiotherapy (confirmed or presumed)
+```{r}
+tcdata_survival <- read.csv("tcga_extra_survival.csv")
+tcdata_survival <- tcdata_survival %>% dplyr::select(bcr_patient_barcode, clinical_stage, OS, OS.time, PFI, PFI.time)
+#transform NA
+tcdata_survival$clinical_stage <- na_if(tcdata_survival$clinical_stage, "[Not Available]")
+tcdata_survival <- tcdata_survival %>% rename(case_id = bcr_patient_barcode)
+
+tcdata_hpv <- read.csv("tcga_hpv_info.csv")
+tcdata_hpv <- tcdata_hpv %>% dplyr::select(SampleBarcode, HPV.status)
+#remove last 4 characters so they match the barcodes in the prev two files
+tcdata_hpv$SampleBarcode <- substr(tcdata_hpv$SampleBarcode, 1, nchar(tcdata_hpv$SampleBarcode) -4)
+tcdata_hpv <- tcdata_hpv %>% rename(case_id = SampleBarcode)
+
+merged_tcga <- tcdata %>% 
+    left_join(tcdata_survival, by = "case_id") %>%
+    left_join(tcdata_hpv, by = "case_id")
+
+length(merged_tcga$case_id)
+merged_tcga$interim_stage <- ifelse(merged_tcga$clinical_stage == "I" | merged_tcga$clinical_stage == "IA" |
+                                     merged_tcga$clinical_stage == "IB" | merged_tcga$clinical_stage == "IB1" |
+                                     merged_tcga$clinical_stage == "IB2" | merged_tcga$clinical_stage == "Stage I" | 
+                                     merged_tcga$clinical_stage == "Stage IA" | merged_tcga$clinical_stage == "Stage IA1"| 
+                                     merged_tcga$clinical_stage == "Stage IA2" | merged_tcga$clinical_stage == "Stage IB" |
+                                     merged_tcga$clinical_stage == "Stage IB1" | merged_tcga$clinical_stage == "Stage IB2", 1, 
+                                   ifelse(
+                                     merged_tcga$clinical_stage == "II" | merged_tcga$clinical_stage == "II (T2N0)" | 
+                                     merged_tcga$clinical_stage == "IIA" | merged_tcga$clinical_stage == "IIA2" | 
+                                     merged_tcga$clinical_stage == "IIB" | merged_tcga$clinical_stage == "Stage II" | 
+                                     merged_tcga$clinical_stage == "Stage IIA" | merged_tcga$clinical_stage == "Stage IIA1" | 
+                                     merged_tcga$clinical_stage == "Stage IIA2" | merged_tcga$clinical_stage == "Stage IIB" |
+                                     merged_tcga$clinical_stage == "III" | merged_tcga$clinical_stage == "IIIB" | 
+                                     merged_tcga$clinical_stage == "IIIC" | merged_tcga$clinical_stage == "IIIC1" | 
+                                     merged_tcga$clinical_stage == "Stage III" | merged_tcga$clinical_stage == "Stage IIIA" | 
+                                     merged_tcga$clinical_stage == "Stage IIIB" | merged_tcga$clinical_stage == "IVA" | 
+                                     merged_tcga$clinical_stage == "Stage IVA" , 2,
+                                   ifelse(
+                                    merged_tcga$clinical_stage == "IVB" | merged_tcga$clinical_stage == "Stage IVB", 
+                                     3, merged_tcga$clinical_stage)
+                                     ))
+table(merged_tcga$interim_stage)
+merged_tcga <- merged_tcga %>% filter(treatment_or_therapy == "yes" | (treatment_or_therapy == "not reported" & interim_stage == 2))
+merged_tcga <- merged_tcga %>% select(case_id, age_at_index, clinical_stage, OS, OS.time, PFI, PFI.time, HPV.status, interim_stage)
+length(merged_tcga$case_id)
+table(merged_tcga$interim_stage)
+```
+```{r}
+254-173
+```
+81 excluded for non-radiotherapy
+
+##metastatic
+```{r}
+merged_tcga <- merged_tcga %>% filter(is.na(merged_tcga$interim_stage) | interim_stage == 2 | interim_stage == 1)
+length(merged_tcga$case_id)
+```
+
+```{r}
+173-166
+```
+7 excluded for metastatic
+
+##actual number
+```{r}
+#45 JGH patients
+length(merged_df$case_id) - 45
+```
+146 TCGA patients
+
+```{r}
+166 - 146
+```
+20 excluded because no images
+
+##make flowchart
+307
+254 (-53)
+173 (-81)
+166 (-7)
+134 (-20)
+
+352
+299 
+218
+211
+179
+
+```{r}
+# Load the DiagrammeR package
+library(DiagrammeR)
+
+# Create the flowchart
+g_flow <- DiagrammeR::grViz("
+digraph flowchart {
+  graph [layout = dot, rankdir = TB]
+
+  # Main flow nodes
+  node [shape = rectangle, fontname = Arial, fontsize = 12, style = filled, fillcolor = lightblue]
+  A [label = '352 assessed for eligibility']
+  B [label = '299 left']
+  C [label = '218 left']
+  D [label = '211 left']
+  E [label = '191 included in analyses']
+
+  # Exclusion nodes
+  node [fillcolor = lightpink]
+  Ex1 [label = '53 excluded:\\nadenocarcinoma']
+  Ex2 [label = '81 excluded:\\nnon-radiotherapy']
+  Ex3 [label = '7 excluded:\\nmetastatic disease']
+  Ex4 [label = '20 excluded:\\nno images available']
+  
+  # Edges
+  edge [color = black, arrowhead = vee]
+
+  # Main vertical flow
+  A -> B
+  B -> C
+  C -> D
+  D -> E
+
+  # Horizontal branches for exclusions directly from vertical arrows
+  edge [style = dashed]
+  A -> Ex1 [constraint = false, tailport = s, headport = w]
+  B -> Ex2 [constraint = false, tailport = s, headport = w]
+  C -> Ex3 [constraint = false, tailport = s, headport = w]
+  D -> Ex4 [constraint = false, tailport = s, headport = w]
+  
+    # Node alignment
+  { rank = same; B; Ex1 }
+  { rank = same; C; Ex2 }
+  { rank = same; D; Ex3 }
+  { rank = same; E; Ex4 }
+  
+}
+")
+g_flow
+```
+
+###save
+```{r}
+library(DiagrammeR)
+library(DiagrammeRsvg)
+library(magrittr)
+library(rsvg)
+
+g_flow %>%
+    export_svg %>% charToRaw %>% rsvg_pdf(".//figures//supplementary_S1_flowchart.pdf")
+```
+
+#Sensitivity Analysis
+##Univariate
+```{r}
+S_OS <- Surv(merged_df$OS.time, merged_df$OS)
+S_PFI <- Surv(merged_df$PFI.time, merged_df$PFI)
+```
+
+###age
+```{r}
+PFI.coxfit.age <-  coxph(S_PFI ~ age_at_index , data = merged_df)
+summary(PFI.coxfit.age)
+
+OS.coxfit.age <-  coxph(S_OS ~ age_at_index , data = merged_df)
+summary(OS.coxfit.age)
+```
+###stage
+```{r}
+PFI.coxfit.stage <-  coxph(S_PFI ~ clinical_stage , data = merged_df)
+summary(PFI.coxfit.stage)
+
+OS.coxfit.stage <-  coxph(S_OS ~ clinical_stage , data = merged_df)
+summary(OS.coxfit.stage)
+```
+
+###mean
+```{r}
+PFI.coxfit.mean <-  coxph(S_PFI ~ nuclear_mean , data = merged_df)
+summary(PFI.coxfit.mean)
+
+OS.coxfit.mean <-  coxph(S_OS ~ nuclear_mean , data = merged_df)
+summary(OS.coxfit.mean)
+```
+
+###std
+```{r}
+PFI.coxfit.std<-  coxph(S_PFI ~ nuclear_sd , data = merged_df)
+summary(PFI.coxfit.std)
+
+OS.coxfit.std<-  coxph(S_OS ~ nuclear_sd , data = merged_df)
+summary(OS.coxfit.std)
+```
+
+###Include HPV Status
+
+```{r}
+PFI.coxfit.adjusted <-   coxph(S_PFI ~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage + HPV.status, data = merged_df)
+summary(PFI.coxfit.adjusted)
+
+OS.coxfit.adjusted <-  coxph(S_OS ~ nuclear_mean + nuclear_sd + age_at_index + clinical_stage + HPV.status, data = merged_df)
+summary(OS.coxfit.adjusted)
+
+```
+
+###only distribution parameters
+```{r}
+PFI.coxfit.adjusted <-   coxph(S_PFI ~ nuclear_mean + nuclear_sd, data = merged_df)
+summary(PFI.coxfit.adjusted)
+
+OS.coxfit.adjusted <-  coxph(S_OS ~ nuclear_mean + nuclear_sd, data = merged_df)
+summary(OS.coxfit.adjusted)
+```
+
+###age investigation
+
+```{r}
+library(Hmisc)
+# Calculate death rates by age
+death_rates <- merged_df %>%
+  group_by(age_at_index) %>%
+  dplyr::summarize(
+    deaths = sum(OS), # Total deaths
+    total = n(),           # Total individuals
+    death_rate = deaths / total # Death rate
+  )
+
+# Plot age vs death rate
+ggplot(death_rates, aes(x = age_at_index, y = death_rate)) +
+  geom_line(color = "blue") +
+  geom_point(color = "red") +
+  labs(
+    title = "Age vs Death Rates",
+    x = "Age",
+    y = "Death Rate"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+# Create age groups of 10 years
+merged_df_2 <- merged_df %>%
+  mutate(age_group = cut(
+    age_at_index,
+    breaks = seq(0, 100, by = 10), # Define age bins (0-9, 10-19, ..., 90-99)
+    right = FALSE, # Left-inclusive intervals [0-10), [10-20), ...
+    labels = paste(seq(0, 90, by = 10), seq(10, 100, by = 10) - 1, sep = "-")
+  ))
+
+# Calculate death rates by age group
+death_rates <- merged_df_2 %>%
+  group_by(age_group) %>%
+  dplyr::summarize(
+    deaths = sum(OS), # Total deaths in the group
+    total = n(),           # Total individuals in the group
+    death_rate = deaths / total # Death rate
+  )
+
+# Plot age groups vs death rate
+ggplot(death_rates, aes(x = age_group, y = death_rate, group = 1)) +
+  geom_line(color = "blue") +
+  geom_point(color = "red") +
+  labs(
+    title = "Age Group vs Mortality Rates",
+    x = "Age Group",
+    y = "Mortality Rate"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) # Rotate x-axis labels
+```
+
+###Quadratic Age
+```{r}
+PFI.coxfit.adjusted <-   coxph(S_PFI ~ nuclear_mean + nuclear_sd + age_at_index + I(age_at_index^2) + clinical_stage, data = merged_df)
+summary(PFI.coxfit.adjusted)
+
+OS.coxfit.adjusted <-  coxph(S_OS ~ nuclear_mean + nuclear_sd + age_at_index + + I(age_at_index^2)  + clinical_stage, data = merged_df)
+summary(OS.coxfit.adjusted)
+
+```
+
+##Survival times
+```{r}
+merged_df_time <- merged_df %>% mutate(follow_time = pmax(OS.time/365*12, PFI.time/365*12))
+hist(merged_df_time$follow_time)
+fivenum(merged_df_time$follow_time)
+mean(merged_df_time$follow_time)
+```
+
+
+
+
