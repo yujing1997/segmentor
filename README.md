@@ -12,11 +12,11 @@
 
 
 ## Create and Activate gdc-client virtual environment
-module load StdEnv/2020  
-module load python/3.8
-pip install --user virtualenv
-virtualenv ~/envs/env_gdc
-source ~/env_gdc/bin/activate
+`module load StdEnv/2020`
+`module load python/3.8`
+`pip install --user virtualenv`
+`virtualenv ~/envs/env_gdc`
+`source ~/env_gdc/bin/activate`
 
 
 ## Run gdc-client download 
